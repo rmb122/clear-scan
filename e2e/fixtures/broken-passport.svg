@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <defs>
+    <linearGradient id="desk"><stop stop-color="#182622"/><stop offset="1" stop-color="#44534e"/></linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8e1ca"/><stop offset=".7" stop-color="#fbf7e8"/><stop offset="1" stop-color="#d9d0b9"/></linearGradient>
+  </defs>
+  <rect width="1200" height="900" fill="url(#desk)"/>
+  <path d="M210 175 1000 140 1040 675 175 730Z" fill="url(#paper)" stroke="#c9bea5" stroke-width="7"/>
+  <rect x="280" y="310" width="220" height="260" rx="18" fill="#9caeaa"/><circle cx="390" cy="385" r="55" fill="#718781"/>
+  <g fill="#536761"><rect x="570" y="300" width="300" height="17"/><rect x="570" y="350" width="350" height="11"/><rect x="570" y="395" width="320" height="11"/><rect x="570" y="440" width="270" height="11"/><rect x="260" y="625" width="650" height="22"/></g>
+  <path d="M710 125 920 145 760 710 550 720Z" fill="#fff" opacity=".67"/>
+  <path d="M735 151 865 145" stroke="#26332f" stroke-width="24"/><path d="M178 575 180 680" stroke="#26332f" stroke-width="24"/>
+</svg>

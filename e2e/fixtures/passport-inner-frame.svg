@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <defs>
+    <linearGradient id="desk" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#10271f"/>
+      <stop offset="1" stop-color="#183128"/>
+    </linearGradient>
+    <linearGradient id="passport" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#15364a"/>
+      <stop offset=".55" stop-color="#193f55"/>
+      <stop offset="1" stop-color="#102f43"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="900" fill="url(#desk)"/>
+  <path d="M145 105 1050 150 1002 790 100 735Z" fill="url(#passport)" stroke="#284a50" stroke-width="4"/>
+  <path d="M236 190 945 222 917 720 205 676Z" fill="#0b293d" stroke="#51d2bd" stroke-width="8"/>
+  <rect x="285" y="285" width="205" height="250" rx="8" fill="#8db0ad" stroke="#d9eeea" stroke-width="6"/>
+  <circle cx="387" cy="365" r="60" fill="#567c7a"/>
+  <g fill="#d4e8e2">
+    <rect x="545" y="290" width="290" height="18"/>
+    <rect x="545" y="340" width="320" height="12" opacity=".78"/>
+    <rect x="545" y="388" width="275" height="12" opacity=".72"/>
+    <rect x="545" y="436" width="305" height="12" opacity=".68"/>
+    <rect x="280" y="595" width="560" height="18"/>
+    <rect x="280" y="632" width="530" height="13" opacity=".76"/>
+  </g>
+  <path d="M742 205 900 214 770 713 612 705Z" fill="#fff" opacity=".14"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+  <defs>
+    <pattern id="wood" width="90" height="90" patternUnits="userSpaceOnUse"><rect width="90" height="90" fill="#8c6444"/><path d="M0 20Q45 5 90 26M0 62Q40 45 90 70" fill="none" stroke="#69462f" stroke-width="4"/></pattern>
+    <linearGradient id="card"><stop stop-color="#dcece8"/><stop offset=".55" stop-color="#f6f2dc"/><stop offset="1" stop-color="#d8e7e1"/></linearGradient>
+  </defs>
+  <rect width="1200" height="900" fill="url(#wood)"/>
+  <path d="M170 185 1040 220 982 740 138 682Z" fill="url(#card)" stroke="#c2d5ce" stroke-width="8"/>
+  <circle cx="330" cy="430" r="105" fill="#aacac0"/>
+  <g fill="#45665c"><rect x="500" y="350" width="370" height="16"/><rect x="500" y="400" width="320" height="12" opacity=".6"/><rect x="500" y="445" width="355" height="12" opacity=".6"/><rect x="500" y="490" width="280" height="12" opacity=".6"/></g>
+  <path d="M720 170 960 210 780 750 540 720Z" fill="#fff" opacity=".82"/>
+  <path d="M700 203 840 208" stroke="#fff" stroke-width="32"/><path d="M145 610 150 680" stroke="#8c6444" stroke-width="26"/>
+</svg>
