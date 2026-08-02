@@ -91,7 +91,7 @@ export function InstallButton() {
       <Button variant="ghost" size="icon" onClick={() => void install()} className="sm:hidden" aria-label="安装应用">
         <Download />
       </Button>
-      <Button variant="outline" size="sm" onClick={() => void install()} className="hidden sm:inline-flex">
+      <Button variant="outline" size="sm" onClick={() => void install()} className="hidden text-sm sm:inline-flex">
         <Download /> 安装应用
       </Button>
       <Dialog open={showIos} onOpenChange={setShowIos}>

@@ -53,6 +53,14 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
   await page.goto('/')
   await expect(page.getByRole('link', { name: '设置', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '本地图像引擎设置' })).toHaveCount(0)
+  const sourceLink = page.getByRole('link', { name: '查看项目源代码' })
+  await expect(sourceLink).toBeVisible()
+  await expect(sourceLink).toHaveAttribute('href', 'https://github.com/rmb122/clear-scan')
+  if (testInfo.project.name === 'mobile-chromium') {
+    await expect(sourceLink).toHaveText('')
+  } else {
+    await expect(sourceLink).toHaveText('源代码')
+  }
   await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
   await expect.poll(() => new URL(page.url()).hash).toBe('#/')
@@ -64,6 +72,24 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
 
   const install = page.getByRole('button', { name: '安装应用' })
   await expect(install).toBeVisible()
+  if (testInfo.project.name === 'desktop-chromium') {
+    const readTypography = (selector: typeof sourceLink) =>
+      selector.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+        }
+      })
+    const [sourceTypography, installTypography] = await Promise.all([
+      readTypography(sourceLink),
+      readTypography(install),
+    ])
+    expect(sourceTypography).toEqual(installTypography)
+    expect(sourceTypography).toMatchObject({ fontSize: '14px', fontWeight: '600' })
+  }
   const installBox = await install.boundingBox()
   expect(installBox).not.toBeNull()
   expect(installBox!.height).toBeGreaterThanOrEqual(32)
