@@ -19,8 +19,8 @@ import type {
   AdvancedCorrection,
   AdvancedModelBackend,
   DetectionResult,
+  EnhancementEffects,
   EnhancementSettings,
-  FilterPreset,
   GlareLevel,
   NormalizedQuad,
   PassportLayout,
@@ -720,49 +720,44 @@ function rotateMat(cv: CV, source: Mat, rotation: ScanPage['rotation']) {
   return output
 }
 
-function applyToneAdjustments(
-  mat: Mat,
-  grayData: Uint8Array | undefined,
-  backgroundData: Uint8Array | undefined,
-  preset: FilterPreset,
-  adjustments: EnhancementSettings,
-) {
+function applyToneAdjustments(mat: Mat, adjustments: EnhancementSettings) {
   const data = mat.data
   const contrast = 1 + adjustments.contrast / 100
   const brightness = adjustments.brightness
 
-  for (let pixel = 0, index = 0; index < data.length; pixel += 1, index += 4) {
-    const red = data[index]
-    const green = data[index + 1]
-    const blue = data[index + 2]
-    const light = grayData?.[pixel] ?? red * 0.299 + green * 0.587 + blue * 0.114
-    const background = backgroundData?.[pixel] ?? light
-    const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
-    let gain = 1
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = clamp((data[index] - 128) * contrast + 128 + brightness, 0, 255)
+    data[index + 1] = clamp((data[index + 1] - 128) * contrast + 128 + brightness, 0, 255)
+    data[index + 2] = clamp((data[index + 2] - 128) * contrast + 128 + brightness, 0, 255)
+  }
+}
 
-    if (
-      (preset === 'smart' || preset === 'deshadow' || preset === 'ai-deshadow' || preset === 'deglare') &&
-      light > 224 &&
-      light - background > 10 &&
-      saturation < 42
-    ) {
-      const target = background + 8 + (light - background) * (preset === 'deglare' ? 0.16 : 0.32)
-      gain *= target / Math.max(1, light)
+function applyGlareReduction(cv: CV, source: Mat) {
+  const gray = new cv.Mat()
+  const background = new cv.Mat()
+  try {
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY)
+    const base = Math.min(81, Math.max(21, Math.floor(Math.min(source.cols, source.rows) / 18)))
+    const kernelSize = base % 2 === 0 ? base + 1 : base
+    cv.GaussianBlur(gray, background, new cv.Size(kernelSize, kernelSize), 0)
+    const pixels = source.data
+    for (let pixel = 0, index = 0; pixel < gray.data.length; pixel += 1, index += 4) {
+      const red = pixels[index]
+      const green = pixels[index + 1]
+      const blue = pixels[index + 2]
+      const light = gray.data[pixel]
+      const localBackground = background.data[pixel]
+      const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
+      if (light <= 224 || light - localBackground <= 10 || saturation >= 42) continue
+      const target = localBackground + 8 + (light - localBackground) * 0.16
+      const gain = target / Math.max(1, light)
+      pixels[index] = clamp(red * gain, 0, 255)
+      pixels[index + 1] = clamp(green * gain, 0, 255)
+      pixels[index + 2] = clamp(blue * gain, 0, 255)
     }
-
-    const saturationBoost = preset === 'vivid' ? 1.34 : preset === 'smart' ? 1.05 : 1
-    const gray = light
-    data[index] = clamp(((gray + (red - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness, 0, 255)
-    data[index + 1] = clamp(
-      ((gray + (green - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness,
-      0,
-      255,
-    )
-    data[index + 2] = clamp(
-      ((gray + (blue - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness,
-      0,
-      255,
-    )
+  } finally {
+    gray.delete()
+    background.delete()
   }
 }
 
@@ -829,30 +824,27 @@ function estimatePaperIllumination(cv: CV, source: Mat) {
   }
 }
 
-function applyClassicalShadowRemoval(cv: CV, source: Mat, preset: FilterPreset, shadowStrength: number) {
+function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number) {
   const illumination = estimatePaperIllumination(cv, source)
   const gray = new cv.Mat()
   try {
     cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY)
-    const dark = percentile(illumination.data, 0.2)
-    const paper = percentile(illumination.data, 0.9)
+    const dark = percentile(illumination.data, 0.12)
+    const paper = percentile(illumination.data, 0.92)
     const variation = paper - dark
     // A flat page should remain flat. This prevents needless colour and exposure shifts.
-    if (variation < 7) return
+    if (variation < 4) return
     const normalizedStrength = clamp(shadowStrength, 0, 100) / 100
-    const blend =
-      preset === 'black-white'
-        ? 0.96
-        : preset === 'deshadow'
-          ? 0.55 + normalizedStrength * 0.4
-          : 0.28 + normalizedStrength * 0.32
-    const target = Math.max(paper, variation > 22 && paper < 184 ? 184 : paper)
+    const blend = 0.45 + normalizedStrength * 0.5
+    const target = Math.max(paper, percentile(gray.data, 0.9), variation > 22 && paper < 184 ? 184 : paper)
     const pixels = source.data
     for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
       const background = Math.max(36, illumination.data[pixel])
-      const ratio = clamp(target / background, 1, 2.2)
-      const deficit = clamp((target - background - 2) / Math.max(16, variation * 0.72), 0, 1)
-      const gain = 1 + (Math.pow(ratio, blend) - 1) * deficit
+      // Blend toward direct shade normalization. Applying the ratio from the
+      // low-frequency illumination map preserves local ink contrast while
+      // flattening broad gradients and cast shadows.
+      const ratio = clamp(target / background, 1, 2.4)
+      const gain = 1 + (ratio - 1) * blend
       pixels[index] = clamp(pixels[index] * gain, 0, 255)
       pixels[index + 1] = clamp(pixels[index + 1] * gain, 0, 255)
       pixels[index + 2] = clamp(pixels[index + 2] * gain, 0, 255)
@@ -863,15 +855,11 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, preset: FilterPreset, 
   }
 }
 
-function processFilter(cv: CV, source: Mat, preset: FilterPreset, adjustments: EnhancementSettings) {
-  const output = source.clone()
+function applyColorEffect(cv: CV, output: Mat, effect: EnhancementEffects['color']) {
   const gray = new cv.Mat()
   const background = new cv.Mat()
   try {
-    if (preset === 'smart' || preset === 'deshadow' || preset === 'black-white') {
-      applyClassicalShadowRemoval(cv, output, preset, adjustments.shadowStrength ?? 50)
-    }
-    if (preset === 'black-white') {
+    if (effect === 'black-white') {
       cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
       const claheOutput = new cv.Mat()
       const clahe = new cv.CLAHE(1.45, new cv.Size(10, 10))
@@ -892,7 +880,7 @@ function processFilter(cv: CV, source: Mat, preset: FilterPreset, adjustments: E
         claheOutput.delete()
       }
       cv.cvtColor(background, output, cv.COLOR_GRAY2RGBA)
-    } else if (preset === 'grayscale') {
+    } else if (effect === 'grayscale') {
       cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
       const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8))
       try {
@@ -901,41 +889,53 @@ function processFilter(cv: CV, source: Mat, preset: FilterPreset, adjustments: E
       } finally {
         clahe.delete()
       }
-    } else {
-      cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
-      if (preset === 'smart' || preset === 'deshadow' || preset === 'ai-deshadow' || preset === 'deglare') {
-        const base = Math.min(81, Math.max(21, Math.floor(Math.min(output.cols, output.rows) / 18)))
-        const kernelSize = base % 2 === 0 ? base + 1 : base
-        cv.GaussianBlur(gray, background, new cv.Size(kernelSize, kernelSize), 0)
+    } else if (effect === 'vivid') {
+      const data = output.data
+      for (let index = 0; index < data.length; index += 4) {
+        const red = data[index]
+        const green = data[index + 1]
+        const blue = data[index + 2]
+        const light = red * 0.299 + green * 0.587 + blue * 0.114
+        data[index] = clamp(light + (red - light) * 1.34, 0, 255)
+        data[index + 1] = clamp(light + (green - light) * 1.34, 0, 255)
+        data[index + 2] = clamp(light + (blue - light) * 1.34, 0, 255)
       }
-      applyToneAdjustments(output, gray.data, background.empty() ? undefined : background.data, preset, adjustments)
     }
+  } finally {
+    gray.delete()
+    background.delete()
+  }
+}
 
-    const presetSharpness =
-      preset === 'sharpen'
-        ? 0.9
-        : preset === 'smart'
-          ? 0.3
-          : preset === 'deshadow' || preset === 'ai-deshadow'
-            ? 0.2
-            : 0
-    const amount = presetSharpness + adjustments.sharpness / 180
-    if (amount > 0.03) {
-      const blur = new cv.Mat()
-      try {
-        cv.GaussianBlur(output, blur, new cv.Size(0, 0), 1.25)
-        cv.addWeighted(output, 1 + amount, blur, -amount, 0, output)
-      } finally {
-        blur.delete()
-      }
+function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
+  const amount = 0.15 + (clamp(strength, 0, 100) / 100) * 0.75
+  const blur = new cv.Mat()
+  try {
+    cv.GaussianBlur(output, blur, new cv.Size(0, 0), 1.25)
+    cv.addWeighted(output, 1 + amount, blur, -amount, 0, output)
+  } finally {
+    blur.delete()
+  }
+}
+
+function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjustments: EnhancementSettings) {
+  const output = source.clone()
+  try {
+    if (effects.shadow === 'deshadow') {
+      applyClassicalShadowRemoval(cv, output, adjustments.shadowStrength)
+    }
+    if (effects.glare === 'deglare') {
+      applyGlareReduction(cv, output)
+    }
+    applyToneAdjustments(output, adjustments)
+    applyColorEffect(cv, output, effects.color)
+    if (effects.detail === 'sharpen') {
+      applyDetailEnhancement(cv, output, adjustments.sharpness)
     }
     return output
   } catch (error) {
     output.delete()
     throw error
-  } finally {
-    gray.delete()
-    background.delete()
   }
 }
 
@@ -1173,14 +1173,14 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
     )
     rotated = rotateMat(cv, warped, page.rotation)
     post({ id, type: 'progress', progress: 68, label: '正在应用增强效果' })
-    if (page.filter === 'ai-deshadow') {
+    if (page.effects.shadow === 'ai-deshadow') {
       correction =
         page.advancedCorrection?.fingerprint === correctionFingerprint(page)
           ? page.advancedCorrection
           : await createAdvancedCorrection(page, rotated)
       await applyAdvancedCorrection(rotated, correction, page.adjustments.shadowStrength ?? 50)
     }
-    filtered = processFilter(cv, rotated, page.filter, page.adjustments)
+    filtered = processEffects(cv, rotated, page.effects, page.adjustments)
     const canvas = new OffscreenCanvas(filtered.cols, filtered.rows)
     const context = canvas.getContext('2d')
     if (!context) throw new Error('无法生成扫描结果')

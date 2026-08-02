@@ -79,11 +79,11 @@ test('standard shadow removal flattens cast shadows while retaining ink contrast
     timeout: 120_000,
   })
   await page.getByRole('button', { name: '确认裁剪' }).click()
-  await waitForPreviewChange(page)
+  const initialSrc = await waitForPreviewChange(page)
   await page.getByRole('button', { name: '原版', exact: true }).click()
-  const originalSrc = await waitForPreviewChange(page)
+  const originalSrc = await waitForPreviewChange(page, initialSrc)
   const original = await previewRegions(page)
-  await page.getByRole('button', { name: '去阴影', exact: true }).click()
+  await page.getByRole('button', { name: '标准去阴影', exact: true }).click()
   await waitForPreviewChange(page, originalSrc)
   const corrected = await previewRegions(page)
 

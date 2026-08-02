@@ -8,6 +8,7 @@ import {
   HardDrive,
   LoaderCircle,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   Wifi,
@@ -17,6 +18,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import {
   ADVANCED_MODEL,
@@ -25,6 +27,7 @@ import {
   refreshAdvancedModelStatus,
   uninstallAdvancedModel,
 } from '@/lib/advanced-model'
+import { clearScannerData, db } from '@/lib/db'
 import { useAppStore } from '@/store/app-store'
 
 function formatBytes(value: number) {
@@ -35,6 +38,9 @@ export function SettingsPage() {
   const controller = useRef<AbortController | undefined>(undefined)
   const [storage, setStorage] = useState<{ usage?: number; quota?: number }>()
   const [working, setWorking] = useState(false)
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false)
+  const [clearingHistory, setClearingHistory] = useState(false)
+  const [historyCounts, setHistoryCounts] = useState({ projects: 0, pages: 0 })
   const engineReady = useAppStore((state) => state.engineReady)
   const engineLabel = useAppStore((state) => state.engineLabel)
   const modelState = useAppStore((state) => state.modelState)
@@ -54,8 +60,13 @@ export function SettingsPage() {
     setStorage(await navigator.storage.estimate())
   }
 
+  const refreshHistoryCounts = async () => {
+    const [projects, pages] = await Promise.all([db.projects.count(), db.pages.count()])
+    setHistoryCounts({ projects, pages })
+  }
+
   useEffect(() => {
-    void Promise.all([refreshAdvancedModelStatus(), refreshStorage()])
+    void Promise.all([refreshAdvancedModelStatus(), refreshStorage(), refreshHistoryCounts()])
     return () => controller.current?.abort()
   }, [])
 
@@ -101,6 +112,22 @@ export function SettingsPage() {
     }
   }
 
+  const clearHistory = async () => {
+    setClearingHistory(true)
+    try {
+      await clearScannerData()
+      await Promise.all([refreshHistoryCounts(), refreshStorage()])
+      setClearHistoryOpen(false)
+      toast.success('所有扫描历史已清空', { description: '高级去阴影模型仍保留在当前设备。' })
+    } catch (reason) {
+      toast.error('扫描历史清理失败', {
+        description: reason instanceof Error ? reason.message : '请关闭其他页面后重试',
+      })
+    } finally {
+      setClearingHistory(false)
+    }
+  }
+
   return (
     <div className="min-h-[calc(100svh-4rem)] pb-24 pt-9 sm:pt-12">
       <div>
@@ -115,7 +142,9 @@ export function SettingsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <span className="grid size-11 place-items-center rounded-2xl bg-secondary text-primary"><Cpu /></span>
+              <span className="grid size-11 place-items-center rounded-2xl bg-secondary text-primary">
+                <Cpu />
+              </span>
               <Badge variant="secondary">随应用安装</Badge>
             </div>
             <CardTitle className="pt-3">标准文档增强</CardTitle>
@@ -124,57 +153,175 @@ export function SettingsPage() {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2 rounded-2xl bg-muted p-4 text-sm">
               {engineReady ? <CheckCircle2 className="size-4 text-primary" /> : <Cpu className="size-4 text-primary" />}
-              <span className="font-semibold">{engineReady ? '可用' : engineLabel === '正在准备本地图像引擎' ? '随用随启，首次扫描时自动加载' : engineLabel}</span>
+              <span className="font-semibold">
+                {engineReady
+                  ? '可用'
+                  : engineLabel === '正在准备本地图像引擎'
+                    ? '随用随启，首次扫描时自动加载'
+                    : engineLabel}
+              </span>
             </div>
-            <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />无需模型、无需联网，也不依赖 Web Crypto。普通 HTTP 环境可直接测试。</p>
+            <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+              无需模型、无需联网，也不依赖 Web Crypto。普通 HTTP 环境可直接测试。
+            </p>
           </CardContent>
         </Card>
 
         <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="grid size-11 place-items-center rounded-2xl bg-primary text-white"><Bot /></span>
+              <span className="grid size-11 place-items-center rounded-2xl bg-primary text-white">
+                <Bot />
+              </span>
               <Badge variant={modelState === 'ready' ? 'default' : 'secondary'}>
-                {modelState === 'ready' ? '已安装' : modelState === 'installing' ? '安装中' : modelState === 'error' ? '需重试' : '可选组件'}
+                {modelState === 'ready'
+                  ? '已安装'
+                  : modelState === 'installing'
+                    ? '安装中'
+                    : modelState === 'error'
+                      ? '需重试'
+                      : '可选组件'}
               </Badge>
             </div>
             <CardTitle className="pt-3">AI 高级去阴影</CardTitle>
-            <CardDescription>DocShadow SD7K FP16，擅长手掌、折痕和大面积渐变阴影。原始文字细节由高分辨率图像保留。</CardDescription>
+            <CardDescription>
+              DocShadow SD7K FP16，擅长手掌、折痕和大面积渐变阴影。原始文字细节由高分辨率图像保留。
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-2 text-xs sm:grid-cols-2">
-              <div className="flex items-center gap-2 rounded-xl bg-muted p-3"><Database className="size-4 text-primary" /><span><b>{formatBytes(ADVANCED_MODEL.bytes)}</b><br /><span className="text-muted-foreground">一次性本地组件</span></span></div>
-              <div className="flex items-center gap-2 rounded-xl bg-muted p-3"><HardDrive className="size-4 text-primary" /><span><b>{storageLabel}</b><br /><span className="text-muted-foreground">安装需预留约 71 MiB</span></span></div>
-              {record?.backend && <div className="flex items-center gap-2 rounded-xl bg-muted p-3"><Gauge className="size-4 text-primary" /><span><b>{record.backend === 'webgpu' ? 'WebGPU' : 'WebAssembly'}</b><br /><span className="text-muted-foreground">{record.inputSize} px · {Math.round(record.benchmarkMs ?? 0)} ms 基准</span></span></div>}
-              <div className="flex items-center gap-2 rounded-xl bg-muted p-3"><ShieldCheck className="size-4 text-primary" /><span><b>图片不上传</b><br /><span className="text-muted-foreground">权重与校正图存于 IndexedDB</span></span></div>
+              <div className="flex items-center gap-2 rounded-xl bg-muted p-3">
+                <Database className="size-4 text-primary" />
+                <span>
+                  <b>{formatBytes(ADVANCED_MODEL.bytes)}</b>
+                  <br />
+                  <span className="text-muted-foreground">一次性本地组件</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl bg-muted p-3">
+                <HardDrive className="size-4 text-primary" />
+                <span>
+                  <b>{storageLabel}</b>
+                  <br />
+                  <span className="text-muted-foreground">安装需预留约 71 MiB</span>
+                </span>
+              </div>
+              {record?.backend && (
+                <div className="flex items-center gap-2 rounded-xl bg-muted p-3">
+                  <Gauge className="size-4 text-primary" />
+                  <span>
+                    <b>{record.backend === 'webgpu' ? 'WebGPU' : 'WebAssembly'}</b>
+                    <br />
+                    <span className="text-muted-foreground">
+                      {record.inputSize} px · {Math.round(record.benchmarkMs ?? 0)} ms 基准
+                    </span>
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-xl bg-muted p-3">
+                <ShieldCheck className="size-4 text-primary" />
+                <span>
+                  <b>图片不上传</b>
+                  <br />
+                  <span className="text-muted-foreground">权重与校正图存于 IndexedDB</span>
+                </span>
+              </div>
             </div>
 
             {(installing || modelState === 'error') && (
               <div className="rounded-2xl border border-border bg-background p-4">
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs"><span className="font-semibold">{modelLabel}</span><span className="tabular-nums">{modelProgress}%</span></div>
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold">{modelLabel}</span>
+                  <span className="tabular-nums">{modelProgress}%</span>
+                </div>
                 <Progress value={modelProgress} />
               </div>
             )}
 
             {!window.isSecureContext && (
-              <p className="flex items-start gap-2 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-amber-900"><Wifi className="mt-0.5 size-4 shrink-0" />当前是普通 HTTP：模型仍可用 WebAssembly 运行，但 WebGPU、多线程 WASM、PWA 安装与离线 Service Worker 会受限。</p>
+              <p className="flex items-start gap-2 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                <Wifi className="mt-0.5 size-4 shrink-0" />
+                当前是普通 HTTP：模型仍可用 WebAssembly 运行，但 WebGPU、多线程 WASM、PWA 安装与离线 Service Worker
+                会受限。
+              </p>
             )}
 
             <div className="flex flex-wrap gap-2">
               {installing ? (
-                <Button variant="outline" onClick={() => controller.current?.abort()}><X />取消安装</Button>
+                <Button variant="outline" onClick={() => controller.current?.abort()}>
+                  <X />
+                  取消安装
+                </Button>
               ) : modelState === 'ready' ? (
                 <>
-                  <Button variant="outline" disabled={working} onClick={() => void retest()}>{working ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}重新测速</Button>
-                  <Button variant="destructive" disabled={working} onClick={() => void uninstall()}><Trash2 />卸载模型</Button>
+                  <Button variant="outline" disabled={working} onClick={() => void retest()}>
+                    {working ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}重新测速
+                  </Button>
+                  <Button variant="destructive" disabled={working} onClick={() => void uninstall()}>
+                    <Trash2 />
+                    卸载模型
+                  </Button>
                 </>
               ) : (
-                <Button disabled={working} onClick={() => void install()}>{working ? <LoaderCircle className="animate-spin" /> : <Bot />}{modelState === 'error' ? '重试安装' : '安装高级模型'}</Button>
+                <Button disabled={working} onClick={() => void install()}>
+                  {working ? <LoaderCircle className="animate-spin" /> : <Bot />}
+                  {modelState === 'error' ? '重试安装' : '安装高级模型'}
+                </Button>
               )}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-5">
+        <CardHeader>
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-destructive">
+                <ShieldAlert />
+              </span>
+              <div>
+                <CardTitle>扫描历史数据</CardTitle>
+                <CardDescription className="mt-1.5">
+                  当前保存 {historyCounts.projects} 个项目、{historyCounts.pages} 个页面。清空后不会卸载高级模型。
+                </CardDescription>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              disabled={clearingHistory || historyCounts.projects + historyCounts.pages === 0}
+              onClick={() => setClearHistoryOpen(true)}
+            >
+              {clearingHistory ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+              清空所有历史数据
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Dialog open={clearHistoryOpen} onOpenChange={setClearHistoryOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="text-destructive" />
+              清空所有扫描历史？
+            </DialogTitle>
+            <DialogDescription>
+              所有项目、原图、缩略图、编辑设置和页面校正缓存都会永久删除。已经导出的文件和已安装的 AI 模型不受影响。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={clearingHistory} onClick={() => setClearHistoryOpen(false)}>
+              取消
+            </Button>
+            <Button variant="destructive" disabled={clearingHistory} onClick={() => void clearHistory()}>
+              {clearingHistory ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+              确认清空
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

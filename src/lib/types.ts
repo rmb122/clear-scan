@@ -4,16 +4,22 @@ export type PassportLayout = 'data-page' | 'spread'
 
 export type PageRole = 'front' | 'back' | 'page'
 
-export type FilterPreset =
-  | 'original'
-  | 'smart'
-  | 'deshadow'
-  | 'ai-deshadow'
-  | 'deglare'
-  | 'grayscale'
-  | 'black-white'
-  | 'sharpen'
-  | 'vivid'
+export type ShadowEffect = 'none' | 'deshadow' | 'ai-deshadow'
+
+export type GlareEffect = 'none' | 'deglare'
+
+export type ColorEffect = 'original' | 'grayscale' | 'black-white' | 'vivid'
+
+export type DetailEffect = 'none' | 'sharpen'
+
+export type EnhancementEffect = ShadowEffect | GlareEffect | ColorEffect | DetailEffect
+
+export interface EnhancementEffects {
+  shadow: ShadowEffect
+  glare: GlareEffect
+  color: ColorEffect
+  detail: DetailEffect
+}
 
 export type GlareLevel = 'none' | 'mild' | 'severe'
 
@@ -46,11 +52,7 @@ export interface AdvancedCorrection {
   createdAt: number
 }
 
-export type AdvancedModelInstallState =
-  | 'not-installed'
-  | 'installing'
-  | 'ready'
-  | 'error'
+export type AdvancedModelInstallState = 'not-installed' | 'installing' | 'ready' | 'error'
 
 export interface AdvancedModelRecord {
   id: string
@@ -94,7 +96,7 @@ export interface ScanPage {
   confidence: number
   glareLevel: GlareLevel
   rotation: 0 | 90 | 180 | 270
-  filter: FilterPreset
+  effects: EnhancementEffects
   adjustments: EnhancementSettings
   advancedCorrection?: AdvancedCorrection
   thumbnail?: Blob
@@ -166,8 +168,22 @@ export type ScannerWorkerResponse =
 export const DEFAULT_ADJUSTMENTS: EnhancementSettings = {
   brightness: 0,
   contrast: 0,
-  sharpness: 0,
+  sharpness: 50,
   shadowStrength: 50,
+}
+
+export const ORIGINAL_EFFECTS: EnhancementEffects = {
+  shadow: 'none',
+  glare: 'none',
+  color: 'original',
+  detail: 'none',
+}
+
+export const SMART_EFFECTS: EnhancementEffects = {
+  shadow: 'deshadow',
+  glare: 'deglare',
+  color: 'original',
+  detail: 'sharpen',
 }
 
 export const MODE_LABELS: Record<ScanMode, string> = {
@@ -176,12 +192,12 @@ export const MODE_LABELS: Record<ScanMode, string> = {
   document: '文档扫描',
 }
 
-export const FILTER_LABELS: Record<FilterPreset, string> = {
-  original: '原版',
-  smart: '智能增强',
+export const EFFECT_LABELS: Record<EnhancementEffect, string> = {
+  none: '关闭',
   deshadow: '去阴影',
   'ai-deshadow': 'AI 去阴影',
   deglare: '去反光',
+  original: '原色',
   grayscale: '灰度',
   'black-white': '黑白',
   sharpen: '加锐',

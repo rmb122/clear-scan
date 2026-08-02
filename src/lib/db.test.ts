@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { bulkPutPages, clearScannerData, db, deleteAdvancedModel, deleteProject, getProjectWithPages } from './db'
 import { DEFAULT_QUAD } from './geometry'
-import { DEFAULT_ADJUSTMENTS, type ScanPage, type ScanProject } from './types'
+import { DEFAULT_ADJUSTMENTS, SMART_EFFECTS, type ScanPage, type ScanProject } from './types'
 
 afterEach(async () => {
   await clearScannerData()
@@ -32,19 +32,22 @@ describe('local scan repository', () => {
       confidence: 0.8,
       glareLevel: 'none',
       rotation: 0,
-      filter: 'smart',
+      effects: { ...SMART_EFFECTS },
       adjustments: DEFAULT_ADJUSTMENTS,
-      advancedCorrection: id === 'page-1' ? {
-        fingerprint: 'fingerprint-1',
-        modelId: 'docshadow-sd7k-fp16',
-        modelVersion: '1.0.0-fp16',
-        map: new Blob(['gain-map'], { type: 'image/png' }),
-        width: 64,
-        height: 64,
-        backend: 'wasm',
-        inferenceMs: 42,
-        createdAt: now,
-      } : undefined,
+      advancedCorrection:
+        id === 'page-1'
+          ? {
+              fingerprint: 'fingerprint-1',
+              modelId: 'docshadow-sd7k-fp16',
+              modelVersion: '1.0.0-fp16',
+              map: new Blob(['gain-map'], { type: 'image/png' }),
+              width: 64,
+              height: 64,
+              backend: 'wasm',
+              inferenceMs: 42,
+              createdAt: now,
+            }
+          : undefined,
       createdAt: now,
       updatedAt: now,
     })
@@ -82,5 +85,35 @@ describe('local scan repository', () => {
     await deleteProject(project.id)
     expect(await db.projects.count()).toBe(0)
     expect(await db.pages.count()).toBe(0)
+  })
+
+  it('clears scan history without uninstalling the advanced model', async () => {
+    const now = Date.now()
+    await db.projects.put({
+      id: 'project-to-clear',
+      mode: 'document',
+      name: '待清理文档',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.models.put({
+      id: 'docshadow-sd7k-fp16',
+      version: '1.0.0-fp16',
+      state: 'ready',
+      expectedBytes: 4,
+      downloadedBytes: 4,
+      sha256: 'test',
+    })
+    await db.modelChunks.put({
+      modelId: 'docshadow-sd7k-fp16',
+      index: 0,
+      data: new Uint8Array([1, 2, 3, 4]).buffer,
+    })
+
+    await clearScannerData()
+
+    expect(await db.projects.count()).toBe(0)
+    expect(await db.models.count()).toBe(1)
+    expect(await db.modelChunks.count()).toBe(1)
   })
 })
