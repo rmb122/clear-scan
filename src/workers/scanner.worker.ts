@@ -732,31 +732,107 @@ function applyToneAdjustments(mat: Mat, adjustments: EnhancementSettings) {
   }
 }
 
+function mix(left: number, right: number, amount: number) {
+  return left + (right - left) * clamp(amount, 0, 1)
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  if (edge0 === edge1) return value < edge0 ? 0 : 1
+  const normalized = clamp((value - edge0) / (edge1 - edge0), 0, 1)
+  return normalized * normalized * (3 - 2 * normalized)
+}
+
+function pixelLuma(red: number, green: number, blue: number) {
+  return red * 0.299 + green * 0.587 + blue * 0.114
+}
+
+function exteriorHighlightMask(cv: CV, source: Mat) {
+  const analysis = new cv.Mat()
+  try {
+    const scale = Math.min(1, 640 / Math.max(source.cols, source.rows))
+    const width = Math.max(1, Math.round(source.cols * scale))
+    const height = Math.max(1, Math.round(source.rows * scale))
+    cv.resize(source, analysis, new cv.Size(width, height), 0, 0, cv.INTER_AREA)
+    const candidate = new Uint8Array(width * height)
+    for (let pixel = 0, index = 0; pixel < candidate.length; pixel += 1, index += 4) {
+      const red = analysis.data[index]
+      const green = analysis.data[index + 1]
+      const blue = analysis.data[index + 2]
+      const light = pixelLuma(red, green, blue)
+      const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
+      candidate[pixel] = light >= 194 && saturation <= 86 ? 1 : 0
+    }
+    const exterior = new Uint8Array(candidate.length)
+    const queue = new Int32Array(candidate.length)
+    let head = 0
+    let tail = 0
+    const enqueue = (pixel: number) => {
+      if (!candidate[pixel] || exterior[pixel]) return
+      exterior[pixel] = 1
+      queue[tail] = pixel
+      tail += 1
+    }
+    for (let x = 0; x < width; x += 1) {
+      enqueue(x)
+      enqueue((height - 1) * width + x)
+    }
+    for (let y = 1; y < height - 1; y += 1) {
+      enqueue(y * width)
+      enqueue(y * width + width - 1)
+    }
+    while (head < tail) {
+      const pixel = queue[head]
+      head += 1
+      const x = pixel % width
+      if (x > 0) enqueue(pixel - 1)
+      if (x + 1 < width) enqueue(pixel + 1)
+      if (pixel >= width) enqueue(pixel - width)
+      if (pixel + width < candidate.length) enqueue(pixel + width)
+    }
+    return { data: exterior, width, height }
+  } finally {
+    analysis.delete()
+  }
+}
+
 function applyGlareReduction(cv: CV, source: Mat) {
-  const gray = new cv.Mat()
   const background = new cv.Mat()
   try {
-    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY)
-    const base = Math.min(81, Math.max(21, Math.floor(Math.min(source.cols, source.rows) / 18)))
-    const kernelSize = base % 2 === 0 ? base + 1 : base
-    cv.GaussianBlur(gray, background, new cv.Size(kernelSize, kernelSize), 0)
+    // Glare can be much wider than a text line. A large colour-aware background
+    // estimate lets us reconstruct both luminance and local paper/ink chroma.
+    const kernelSize = scaledOdd(Math.min(source.cols, source.rows) / 5, 61, 201)
+    cv.GaussianBlur(source, background, new cv.Size(kernelSize, kernelSize), 0)
+    const exterior = exteriorHighlightMask(cv, source)
     const pixels = source.data
-    for (let pixel = 0, index = 0; pixel < gray.data.length; pixel += 1, index += 4) {
-      const red = pixels[index]
-      const green = pixels[index + 1]
-      const blue = pixels[index + 2]
-      const light = gray.data[pixel]
-      const localBackground = background.data[pixel]
-      const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
-      if (light <= 224 || light - localBackground <= 10 || saturation >= 42) continue
-      const target = localBackground + 8 + (light - localBackground) * 0.16
-      const gain = target / Math.max(1, light)
-      pixels[index] = clamp(red * gain, 0, 255)
-      pixels[index + 1] = clamp(green * gain, 0, 255)
-      pixels[index + 2] = clamp(blue * gain, 0, 255)
+    for (let y = 0; y < source.rows; y += 1) {
+      const maskY = Math.min(exterior.height - 1, Math.floor((y * exterior.height) / source.rows))
+      for (let x = 0; x < source.cols; x += 1) {
+        const maskX = Math.min(exterior.width - 1, Math.floor((x * exterior.width) / source.cols))
+        if (exterior.data[maskY * exterior.width + maskX]) continue
+        const index = (y * source.cols + x) * 4
+        const red = pixels[index]
+        const green = pixels[index + 1]
+        const blue = pixels[index + 2]
+        const light = pixelLuma(red, green, blue)
+        const localRed = background.data[index]
+        const localGreen = background.data[index + 1]
+        const localBlue = background.data[index + 2]
+        const localLight = pixelLuma(localRed, localGreen, localBlue)
+        const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
+        const excess = light - localLight
+        const strength = smoothstep(198, 244, light) * smoothstep(4, 38, excess) * (1 - smoothstep(28, 82, saturation))
+        if (strength < 0.01) continue
+        const targetLight = localLight + Math.min(7, Math.max(0, excess) * 0.12)
+        const reconstructedRed = targetLight + (localRed - localLight) * 1.18
+        const reconstructedGreen = targetLight + (localGreen - localLight) * 1.18
+        const reconstructedBlue = targetLight + (localBlue - localLight) * 1.18
+        const blend = strength * 0.94
+        pixels[index] = clamp(mix(red, reconstructedRed, blend), 0, 255)
+        pixels[index + 1] = clamp(mix(green, reconstructedGreen, blend), 0, 255)
+        pixels[index + 2] = clamp(mix(blue, reconstructedBlue, blend), 0, 255)
+      }
     }
   } finally {
-    gray.delete()
     background.delete()
   }
 }
@@ -776,6 +852,62 @@ function percentile(data: Uint8Array, fraction: number) {
     if (total >= target) return value
   }
   return 255
+}
+
+function histogramPercentile(histogram: Uint32Array, count: number, fraction: number) {
+  const target = count * fraction
+  let total = 0
+  for (let value = 0; value < histogram.length; value += 1) {
+    total += histogram[value]
+    if (total >= target) return value
+  }
+  return histogram.length - 1
+}
+
+function estimatePaperWhitePoint(data: Uint8Array) {
+  const histogram = new Uint32Array(256)
+  let count = 0
+  for (let index = 0; index < data.length; index += 4) {
+    histogram[Math.round(pixelLuma(data[index], data[index + 1], data[index + 2]))] += 1
+    count += 1
+  }
+  const lower = histogramPercentile(histogram, count, 0.62)
+  const upper = histogramPercentile(histogram, count, 0.95)
+  let red = 0
+  let green = 0
+  let blue = 0
+  let samples = 0
+  for (let index = 0; index < data.length; index += 4) {
+    const r = data[index]
+    const g = data[index + 1]
+    const b = data[index + 2]
+    const light = pixelLuma(r, g, b)
+    const saturation = Math.max(r, g, b) - Math.min(r, g, b)
+    if (light < lower || light > upper || saturation > 72) continue
+    red += r
+    green += g
+    blue += b
+    samples += 1
+  }
+  if (!samples) return { red: upper, green: upper, blue: upper, luma: upper }
+  const result = { red: red / samples, green: green / samples, blue: blue / samples, luma: 0 }
+  result.luma = pixelLuma(result.red, result.green, result.blue)
+  return result
+}
+
+function balancedLumaHistogram(data: Uint8Array, redScale: number, greenScale: number, blueScale: number) {
+  const histogram = new Uint32Array(256)
+  let count = 0
+  for (let index = 0; index < data.length; index += 4) {
+    const light = pixelLuma(
+      clamp(data[index] * redScale, 0, 255),
+      clamp(data[index + 1] * greenScale, 0, 255),
+      clamp(data[index + 2] * blueScale, 0, 255),
+    )
+    histogram[Math.round(light)] += 1
+    count += 1
+  }
+  return { histogram, count }
 }
 
 /** Estimate the light falling on the page while closing over text and fine graphics. */
@@ -835,7 +967,7 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number
     // A flat page should remain flat. This prevents needless colour and exposure shifts.
     if (variation < 4) return
     const normalizedStrength = clamp(shadowStrength, 0, 100) / 100
-    const blend = 0.45 + normalizedStrength * 0.5
+    const blend = clamp(0.3 + Math.sqrt(normalizedStrength) * 0.77, 0, 1)
     const target = Math.max(paper, percentile(gray.data, 0.9), variation > 22 && paper < 184 ? 184 : paper)
     const pixels = source.data
     for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
@@ -855,64 +987,121 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number
   }
 }
 
-function applyColorEffect(cv: CV, output: Mat, effect: EnhancementEffects['color']) {
+function applyDocumentColorEnhancement(cv: CV, output: Mat, flattenPaper: boolean) {
+  // Market-style colour modes clean the paper as well as boosting coloured ink.
+  // They perform their own base flattening only when the shadow category is off;
+  // otherwise they consume that category's standard or AI result without stacking it.
+  if (flattenPaper) applyClassicalShadowRemoval(cv, output, 90)
+  const data = output.data
+  const whitePoint = estimatePaperWhitePoint(data)
+  const redScale = clamp(whitePoint.luma / Math.max(1, whitePoint.red), 0.84, 1.2)
+  const greenScale = clamp(whitePoint.luma / Math.max(1, whitePoint.green), 0.84, 1.2)
+  const blueScale = clamp(whitePoint.luma / Math.max(1, whitePoint.blue), 0.84, 1.2)
+  const { histogram, count } = balancedLumaHistogram(data, redScale, greenScale, blueScale)
+  const blackPoint = histogramPercentile(histogram, count, 0.015)
+  const paperPoint = Math.max(blackPoint + 48, histogramPercentile(histogram, count, 0.86))
+  const range = paperPoint - blackPoint
+
+  for (let index = 0; index < data.length; index += 4) {
+    const red = clamp(data[index] * redScale, 0, 255)
+    const green = clamp(data[index + 1] * greenScale, 0, 255)
+    const blue = clamp(data[index + 2] * blueScale, 0, 255)
+    const light = pixelLuma(red, green, blue)
+    const normalized = clamp((light - blackPoint) / range, 0, 1)
+    const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
+    const paperMask = smoothstep(0.76, 0.98, normalized) * (1 - smoothstep(20, 74, saturation))
+    let targetLight = 8 + 240 * normalized ** 0.8
+    targetLight = mix(targetLight, 248, paperMask * 0.88)
+    const chromaScale = mix(1.17, 0.08, paperMask)
+    data[index] = clamp(targetLight + (red - light) * chromaScale, 0, 255)
+    data[index + 1] = clamp(targetLight + (green - light) * chromaScale, 0, 255)
+    data[index + 2] = clamp(targetLight + (blue - light) * chromaScale, 0, 255)
+  }
+}
+
+function applyGrayscaleDocument(cv: CV, output: Mat, flattenPaper: boolean) {
   const gray = new cv.Mat()
-  const background = new cv.Mat()
+  const denoised = new cv.Mat()
   try {
-    if (effect === 'black-white') {
-      cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
-      const claheOutput = new cv.Mat()
-      const clahe = new cv.CLAHE(1.45, new cv.Size(10, 10))
-      try {
-        clahe.apply(gray, claheOutput)
-        const blockSize = scaledOdd(Math.min(output.cols, output.rows) / 18, 31, 81)
-        cv.adaptiveThreshold(
-          claheOutput,
-          background,
-          255,
-          cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-          cv.THRESH_BINARY,
-          blockSize,
-          11,
-        )
-      } finally {
-        clahe.delete()
-        claheOutput.delete()
-      }
-      cv.cvtColor(background, output, cv.COLOR_GRAY2RGBA)
-    } else if (effect === 'grayscale') {
-      cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
-      const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8))
-      try {
-        clahe.apply(gray, background)
-        cv.cvtColor(background, output, cv.COLOR_GRAY2RGBA)
-      } finally {
-        clahe.delete()
-      }
-    } else if (effect === 'vivid') {
-      const data = output.data
-      for (let index = 0; index < data.length; index += 4) {
-        const red = data[index]
-        const green = data[index + 1]
-        const blue = data[index + 2]
-        const light = red * 0.299 + green * 0.587 + blue * 0.114
-        data[index] = clamp(light + (red - light) * 1.34, 0, 255)
-        data[index + 1] = clamp(light + (green - light) * 1.34, 0, 255)
-        data[index + 2] = clamp(light + (blue - light) * 1.34, 0, 255)
-      }
+    if (flattenPaper) applyClassicalShadowRemoval(cv, output, 92)
+    cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
+    cv.bilateralFilter(gray, denoised, 5, 22, 4)
+    const blackPoint = percentile(denoised.data, 0.018)
+    const paperPoint = Math.max(blackPoint + 48, percentile(denoised.data, 0.86))
+    const range = paperPoint - blackPoint
+    for (let index = 0; index < denoised.data.length; index += 1) {
+      const normalized = clamp((denoised.data[index] - blackPoint) / range, 0, 1)
+      denoised.data[index] = clamp(6 + 243 * normalized ** 0.82, 0, 255)
     }
+    cv.cvtColor(denoised, output, cv.COLOR_GRAY2RGBA)
   } finally {
     gray.delete()
-    background.delete()
+    denoised.delete()
+  }
+}
+
+function applyBlackWhiteDocument(cv: CV, output: Mat, flattenPaper: boolean) {
+  const gray = new cv.Mat()
+  const denoised = new cv.Mat()
+  const normalized = new cv.Mat()
+  const adaptive = new cv.Mat()
+  try {
+    if (flattenPaper) applyClassicalShadowRemoval(cv, output, 100)
+    cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
+    cv.bilateralFilter(gray, denoised, 5, 24, 4)
+    normalized.create(denoised.rows, denoised.cols, cv.CV_8UC1)
+    const blackPoint = percentile(denoised.data, 0.012)
+    const paperPoint = Math.max(blackPoint + 52, percentile(denoised.data, 0.86))
+    const range = paperPoint - blackPoint
+    for (let index = 0; index < denoised.data.length; index += 1) {
+      const value = clamp((denoised.data[index] - blackPoint) / range, 0, 1)
+      normalized.data[index] = clamp(5 + 248 * value ** 0.88, 0, 255)
+    }
+    const blockSize = scaledOdd(Math.min(output.cols, output.rows) / 14, 41, 121)
+    cv.adaptiveThreshold(normalized, adaptive, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, 12)
+    // Adaptive thresholding alone treats a large uniform red stamp as paper.
+    // Combine it with the normalized global tone so coloured document content
+    // remains visible while faint background texture stays white.
+    for (let index = 0; index < adaptive.data.length; index += 1) {
+      const value = normalized.data[index]
+      adaptive.data[index] = value < 194 || (adaptive.data[index] === 0 && value < 234) ? 0 : 255
+    }
+    cv.cvtColor(adaptive, output, cv.COLOR_GRAY2RGBA)
+  } finally {
+    gray.delete()
+    denoised.delete()
+    normalized.delete()
+    adaptive.delete()
+  }
+}
+
+function applyColorEffect(cv: CV, output: Mat, effect: EnhancementEffects['color'], flattenPaper: boolean) {
+  if (effect === 'enhanced-color') {
+    applyDocumentColorEnhancement(cv, output, flattenPaper)
+  } else if (effect === 'grayscale') {
+    applyGrayscaleDocument(cv, output, flattenPaper)
+  } else if (effect === 'black-white') {
+    applyBlackWhiteDocument(cv, output, flattenPaper)
   }
 }
 
 function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
-  const amount = 0.15 + (clamp(strength, 0, 100) / 100) * 0.75
+  const amount = 0.28 + (clamp(strength, 0, 100) / 100) * 0.92
   const blur = new cv.Mat()
   try {
-    cv.GaussianBlur(output, blur, new cv.Size(0, 0), 1.25)
-    cv.addWeighted(output, 1 + amount, blur, -amount, 0, output)
+    cv.GaussianBlur(output, blur, new cv.Size(0, 0), 0.9)
+    const pixels = output.data
+    const blurred = blur.data
+    for (let index = 0; index < pixels.length; index += 4) {
+      const light = pixelLuma(pixels[index], pixels[index + 1], pixels[index + 2])
+      const blurredLight = pixelLuma(blurred[index], blurred[index + 1], blurred[index + 2])
+      const edgeMask = smoothstep(1.6, 13, Math.abs(light - blurredLight))
+      if (edgeMask < 0.01) continue
+      for (let channel = 0; channel < 3; channel += 1) {
+        const detail = clamp(pixels[index + channel] - blurred[index + channel], -16, 16)
+        pixels[index + channel] = clamp(pixels[index + channel] + detail * amount * edgeMask, 0, 255)
+      }
+    }
   } finally {
     blur.delete()
   }
@@ -928,7 +1117,7 @@ function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjust
       applyGlareReduction(cv, output)
     }
     applyToneAdjustments(output, adjustments)
-    applyColorEffect(cv, output, effects.color)
+    applyColorEffect(cv, output, effects.color, effects.shadow === 'none')
     if (effects.detail === 'sharpen') {
       applyDetailEnhancement(cv, output, adjustments.sharpness)
     }

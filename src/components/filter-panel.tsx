@@ -50,9 +50,9 @@ const effectGroups: EffectGroup[] = [
     label: '色彩风格',
     options: [
       { value: 'original', label: '原色' },
+      { value: 'enhanced-color', label: '彩色增强' },
       { value: 'grayscale', label: '灰度' },
       { value: 'black-white', label: '黑白' },
-      { value: 'vivid', label: '鲜艳' },
     ],
   },
   {
@@ -90,7 +90,7 @@ function activeEffectLabels(effects: EnhancementEffects) {
   if (effects.glare === 'deglare') labels.push('去反光')
   if (effects.color === 'grayscale') labels.push('灰度')
   if (effects.color === 'black-white') labels.push('黑白')
-  if (effects.color === 'vivid') labels.push('鲜艳')
+  if (effects.color === 'enhanced-color') labels.push('彩色增强')
   if (effects.detail === 'sharpen') labels.push('加锐')
   return labels
 }
@@ -173,7 +173,7 @@ export function FilterPanel({
         <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted p-1.5">
           {[
             { value: 'original' as const, label: '原版', description: '清除全部效果' },
-            { value: 'smart' as const, label: '智能增强', description: '阴影＋反光＋加锐' },
+            { value: 'smart' as const, label: '智能增强', description: '净白＋去反光＋清晰文字' },
           ].map((preset) => (
             <button
               key={preset.value}

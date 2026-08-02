@@ -8,7 +8,7 @@ export type ShadowEffect = 'none' | 'deshadow' | 'ai-deshadow'
 
 export type GlareEffect = 'none' | 'deglare'
 
-export type ColorEffect = 'original' | 'grayscale' | 'black-white' | 'vivid'
+export type ColorEffect = 'original' | 'enhanced-color' | 'grayscale' | 'black-white'
 
 export type DetailEffect = 'none' | 'sharpen'
 
@@ -182,7 +182,7 @@ export const ORIGINAL_EFFECTS: EnhancementEffects = {
 export const SMART_EFFECTS: EnhancementEffects = {
   shadow: 'deshadow',
   glare: 'deglare',
-  color: 'original',
+  color: 'enhanced-color',
   detail: 'sharpen',
 }
 
@@ -198,8 +198,8 @@ export const EFFECT_LABELS: Record<EnhancementEffect, string> = {
   'ai-deshadow': 'AI 去阴影',
   deglare: '去反光',
   original: '原色',
+  'enhanced-color': '彩色增强',
   grayscale: '灰度',
   'black-white': '黑白',
   sharpen: '加锐',
-  vivid: '鲜艳',
 }
