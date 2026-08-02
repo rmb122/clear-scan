@@ -36,6 +36,7 @@ function renderEditor(corners: NormalizedQuad, onChange = vi.fn()) {
 
 describe('CropEditor', () => {
   const frames: FrameRequestCallback[] = []
+  const handleOffset = 36 / Math.sqrt(2)
 
   beforeEach(() => {
     frames.length = 0
@@ -61,18 +62,22 @@ describe('CropEditor', () => {
     const handle = screen.getByRole('button', { name: '拖动第 1 个裁剪点' })
     Object.defineProperty(handle, 'setPointerCapture', { configurable: true, value: vi.fn() })
 
-    fireEvent.pointerDown(handle, { pointerId: 7 })
+    fireEvent.pointerDown(handle, { pointerId: 7, clientX: 40 - handleOffset, clientY: 20 - handleOffset })
+    expect(screen.getByTestId('crop-magnifier')).toBeInTheDocument()
     fireEvent.pointerMove(handle, { pointerId: 7, clientX: 300, clientY: 200 })
     expect(onChange).not.toHaveBeenCalled()
 
     act(() => frames[0](16))
-    expect(handle).toHaveStyle({ left: '30%', top: '40%' })
+    expect(Number.parseFloat(handle.style.left)).toBeCloseTo(32.5456, 3)
+    expect(Number.parseFloat(handle.style.top)).toBeCloseTo(45.0912, 3)
     expect(onChange).not.toHaveBeenCalled()
 
     fireEvent.pointerMove(handle, { pointerId: 7, clientX: 900, clientY: 490 })
     fireEvent.pointerUp(handle, { pointerId: 7 })
+    expect(screen.queryByTestId('crop-magnifier')).not.toBeInTheDocument()
     expect(onChange).toHaveBeenCalledTimes(1)
-    expect(onChange.mock.calls[0][0][0]).toEqual({ x: 0.9, y: 0.98 })
+    expect(onChange.mock.calls[0][0][0].x).toBeCloseTo(0.925456, 5)
+    expect(onChange.mock.calls[0][0][0].y).toBe(0.995)
   })
 
   it('clamps the final point and commits an interrupted drag once', () => {
@@ -81,7 +86,7 @@ describe('CropEditor', () => {
     const handle = screen.getByRole('button', { name: '拖动第 4 个裁剪点' })
     Object.defineProperty(handle, 'setPointerCapture', { configurable: true, value: vi.fn() })
 
-    fireEvent.pointerDown(handle, { pointerId: 3 })
+    fireEvent.pointerDown(handle, { pointerId: 3, clientX: 40 - handleOffset, clientY: 480 + handleOffset })
     fireEvent.pointerMove(handle, { pointerId: 3, clientX: -100, clientY: 900 })
     fireEvent.pointerCancel(handle, { pointerId: 3 })
 
@@ -107,5 +112,17 @@ describe('CropEditor', () => {
     )
 
     expect(screen.getByRole('button', { name: '拖动第 1 个裁剪点' })).toHaveStyle({ left: '20%', top: '25%' })
+  })
+
+  it('keeps each drag handle away from the real crop corner', () => {
+    renderEditor(DEFAULT_QUAD)
+
+    const topLeft = screen.getByRole('button', { name: '拖动第 1 个裁剪点' })
+    const bottomRight = screen.getByRole('button', { name: '拖动第 3 个裁剪点' })
+    expect(Number.parseFloat(topLeft.style.marginLeft)).toBeCloseTo(-handleOffset, 5)
+    expect(Number.parseFloat(topLeft.style.marginTop)).toBeCloseTo(-handleOffset, 5)
+    expect(Number.parseFloat(bottomRight.style.marginLeft)).toBeCloseTo(handleOffset, 5)
+    expect(Number.parseFloat(bottomRight.style.marginTop)).toBeCloseTo(handleOffset, 5)
+    expect(screen.getByTestId('crop-connector-0')).toHaveStyle({ width: '36px' })
   })
 })

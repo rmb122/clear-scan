@@ -708,7 +708,7 @@ export function ScanPage() {
                       </Badge>
                       <h2 className="mt-3 text-xl font-bold">确认四个角点</h2>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        拖动绿色圆点，让边框贴合证件或纸张。低对比背景下自动结果可能需要微调。
+                        拖动边框外侧的绿色圆柄，让短线所指的角点贴合证件或纸张；拖动时可通过放大镜精确对齐。
                       </p>
                     </div>
                     <div className="rounded-2xl bg-muted p-4 text-xs leading-5 text-muted-foreground">
