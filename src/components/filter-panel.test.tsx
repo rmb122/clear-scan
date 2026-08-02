@@ -116,6 +116,49 @@ describe('FilterPanel', () => {
     expect(onRotate.mock.calls).toEqual([['counterclockwise'], ['clockwise']])
   })
 
+  it('updates a fine-tuning slider locally and commits only after pointer release', () => {
+    const onAdjustmentsChange = vi.fn()
+    render(
+      <FilterPanel
+        effects={SMART_EFFECTS}
+        adjustments={DEFAULT_ADJUSTMENTS}
+        glareLevel="none"
+        onEffectChange={vi.fn()}
+        onPresetApply={vi.fn()}
+        onAdjustmentsChange={onAdjustmentsChange}
+        onRotate={vi.fn()}
+      />,
+    )
+    const slider = screen.getByRole('slider', { name: '亮度' })
+    const control = slider.closest('label')?.querySelector<HTMLElement>('[data-orientation="horizontal"]')
+    expect(control).toBeTruthy()
+    Object.defineProperties(slider, {
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      hasPointerCapture: { configurable: true, value: () => true },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    })
+    vi.spyOn(control!, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 16,
+      top: 0,
+      right: 100,
+      bottom: 16,
+      left: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(slider, { pointerId: 1, clientX: 50 })
+    fireEvent.pointerMove(slider, { pointerId: 1, clientX: 90 })
+    expect(slider).toHaveAttribute('aria-valuenow', '32')
+    expect(onAdjustmentsChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(slider, { pointerId: 1, clientX: 90 })
+    expect(onAdjustmentsChange).toHaveBeenCalledTimes(1)
+    expect(onAdjustmentsChange).toHaveBeenCalledWith({ ...DEFAULT_ADJUSTMENTS, brightness: 32 })
+  })
+
   it('describes active glare repair and keeps fine-tuning controls collapsed', () => {
     render(
       <FilterPanel

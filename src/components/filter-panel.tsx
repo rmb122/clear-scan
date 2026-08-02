@@ -1,4 +1,5 @@
 import { AlertTriangle, Check, ChevronDown, RotateCcw, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -94,6 +95,42 @@ function activeEffectLabels(effects: EnhancementEffects) {
   if (effects.color === 'enhanced-color') labels.push('彩色增强')
   if (effects.detail === 'sharpen') labels.push('加锐')
   return labels
+}
+
+function DeferredAdjustmentSlider({
+  label,
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(value)
+
+  useEffect(() => setDraft(value), [value])
+
+  return (
+    <>
+      <Slider
+        aria-label={label}
+        min={min}
+        max={max}
+        step={1}
+        value={[draft]}
+        onValueChange={([nextValue]) => setDraft(nextValue)}
+        onValueCommit={([nextValue]) => {
+          setDraft(nextValue)
+          if (nextValue !== value) onCommit(nextValue)
+        }}
+      />
+      <span className="text-right tabular-nums text-muted-foreground">{draft}</span>
+    </>
+  )
 }
 
 export function FilterPanel({
@@ -276,6 +313,7 @@ export function FilterPanel({
             高级微调
           </span>
           <span className="flex items-center gap-2 text-[10px] font-semibold text-muted-foreground">
+            松手后更新预览
             <ChevronDown className="size-4 transition group-open:rotate-180" />
           </span>
         </summary>
@@ -289,14 +327,13 @@ export function FilterPanel({
             {adjustmentRows.map((row) => (
               <label key={row.key} className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-3 text-xs">
                 <span className="font-semibold text-muted-foreground">{row.label}</span>
-                <Slider
+                <DeferredAdjustmentSlider
+                  label={row.label}
                   min={row.min}
                   max={row.max}
-                  step={1}
-                  value={[adjustments[row.key]]}
-                  onValueChange={([value]) => onAdjustmentsChange({ ...adjustments, [row.key]: value })}
+                  value={adjustments[row.key]}
+                  onCommit={(value) => onAdjustmentsChange({ ...adjustments, [row.key]: value })}
                 />
-                <span className="text-right tabular-nums text-muted-foreground">{adjustments[row.key]}</span>
               </label>
             ))}
           </div>
