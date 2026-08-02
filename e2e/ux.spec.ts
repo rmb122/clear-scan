@@ -137,6 +137,13 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
     firstHandleBox!.x + firstHandleBox!.width / 2 + 8,
     firstHandleBox!.y + firstHandleBox!.height / 2 + 6,
   )
+  await expect
+    .poll(async () => {
+      const moved = await handles.first().boundingBox()
+      return moved ? moved.x - firstHandleBox!.x : 0
+    })
+    .toBeGreaterThan(4)
+  await expect(page.getByText('已预识别边缘，请人工确认')).toBeVisible()
   await page.mouse.up()
   await expect(page.getByText('已手动调整边缘')).toBeVisible()
   await expect(page.getByText('已手动调整，等待确认')).toBeVisible()
@@ -169,6 +176,24 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
       .toBeGreaterThanOrEqual(63)
     expect(Math.round((await page.locator('section.paper-grid').boundingBox())!.y)).toBeLessThanOrEqual(65)
   }
+  const preview = page.getByRole('img', { name: '扫描增强预览' })
+  const counterclockwise = page.getByRole('button', { name: '逆时针旋转 90°' })
+  const clockwise = page.getByRole('button', { name: '顺时针旋转 90°' })
+  const [counterclockwiseBox, clockwiseBox] = await Promise.all([
+    counterclockwise.boundingBox(),
+    clockwise.boundingBox(),
+  ])
+  expect(counterclockwiseBox).not.toBeNull()
+  expect(clockwiseBox).not.toBeNull()
+  expect(counterclockwiseBox!.x).toBeLessThan(clockwiseBox!.x)
+
+  const originalPreview = await preview.getAttribute('src')
+  await counterclockwise.click()
+  await expect.poll(() => preview.getAttribute('src')).not.toBe(originalPreview)
+  const counterclockwisePreview = await preview.getAttribute('src')
+  await clockwise.click()
+  await expect.poll(() => preview.getAttribute('src')).not.toBe(counterclockwisePreview)
+
   const blackWhite = page.getByRole('button', { name: '黑白', exact: true })
   await blackWhite.click()
   await expect(blackWhite).toHaveAttribute('aria-pressed', 'true')

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, RotateCcw, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 
 type EffectCategory = keyof EnhancementEffects
 type QuickPreset = 'original' | 'smart'
+type RotationDirection = 'counterclockwise' | 'clockwise'
 
 interface EffectOption {
   value: EnhancementEffect
@@ -108,7 +109,7 @@ export function FilterPanel({
   onEffectChange: (category: EffectCategory, effect: EnhancementEffect) => void
   onPresetApply: (preset: QuickPreset) => void
   onAdjustmentsChange: (settings: EnhancementSettings) => void
-  onRotate: () => void
+  onRotate: (direction: RotationDirection) => void
 }) {
   const defaultAdjustments = adjustmentsEqual(adjustments, DEFAULT_ADJUSTMENTS)
   const glareRepairEnabled = effects.glare === 'deglare'
@@ -272,7 +273,6 @@ export function FilterPanel({
             高级微调
           </span>
           <span className="flex items-center gap-2 text-[10px] font-semibold text-muted-foreground">
-            默认折叠
             <ChevronDown className="size-4 transition group-open:rotate-180" />
           </span>
         </summary>
@@ -300,10 +300,16 @@ export function FilterPanel({
         </div>
       </details>
 
-      <Button variant="outline" className="w-full" onClick={onRotate}>
-        <RotateCw />
-        顺时针旋转 90°
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" onClick={() => onRotate('counterclockwise')}>
+          <RotateCcw />
+          逆时针旋转 90°
+        </Button>
+        <Button variant="outline" onClick={() => onRotate('clockwise')}>
+          <RotateCw />
+          顺时针旋转 90°
+        </Button>
+      </div>
     </div>
   )
 }

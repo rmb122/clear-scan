@@ -26,7 +26,7 @@ export function PageRail({
   useEffect(() => {
     const next: Record<string, string> = {}
     sorted.forEach((page) => {
-      next[page.id] = URL.createObjectURL(page.thumbnail ?? page.source)
+      next[page.id] = URL.createObjectURL(page.source)
     })
     setUrls(next)
     return () => Object.values(next).forEach((url) => URL.revokeObjectURL(url))

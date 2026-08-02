@@ -66,9 +66,11 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
       request.onerror = () => reject(request.error)
     })
     database.close()
-    const source = (records[0] as { source?: unknown } | undefined)?.source
+    const record = records[0] as { source?: unknown; thumbnail?: unknown } | undefined
+    const source = record?.source
     return {
       isBlob: source instanceof Blob,
+      hasPrematureThumbnail: Boolean(record?.thumbnail),
       hasArrayBuffer: Boolean(
         source &&
           typeof source === 'object' &&
@@ -77,7 +79,11 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
       ),
     }
   })
-  expect(storageShape).toEqual({ isBlob: false, hasArrayBuffer: true })
+  expect(storageShape).toEqual({ isBlob: false, hasPrematureThumbnail: false, hasArrayBuffer: true })
+  const pageThumbnail = page.getByRole('button', { name: '打开第 1 页' }).locator('img')
+  await expect
+    .poll(() => pageThumbnail.evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight]))
+    .toEqual([1200, 900])
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await expect(page.getByRole('button', { name: '导出' })).toBeEnabled()
   await expect(page.getByText('调整扫描效果')).toBeVisible({

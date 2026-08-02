@@ -31,6 +31,7 @@ import {
   type DetectionResult,
   type EnhancementEffect,
   type EnhancementEffects,
+  type NormalizedQuad,
   type PageRole,
   type PassportLayout,
   type ScanMode,
@@ -98,6 +99,22 @@ export function ScanPage() {
   )
   const activePreview = preview?.pageId === activePageId ? preview : undefined
   const previewIsCurrent = Boolean(activePreview && activeRenderKey && activePreview.renderKey === activeRenderKey)
+  const updateCropCorners = useCallback(
+    (corners: NormalizedQuad) => {
+      setActive((current) =>
+        current && current.id === activePageId
+          ? {
+              ...current,
+              corners,
+              cornerSource: 'manual',
+              cropConfirmed: false,
+              updatedAt: Date.now(),
+            }
+          : current,
+      )
+    },
+    [activePageId],
+  )
 
   const mode: ScanMode = project?.mode ?? (isScanMode(routeMode) ? routeMode : 'document')
   const sortedPages = useMemo(() => [...pages].sort((a, b) => a.order - b.order), [pages])
@@ -286,7 +303,7 @@ export function ScanPage() {
         const role: PageRole =
           mode === 'id-card' ? (workingPages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
         const now = Date.now()
-        let page: ScanPageModel = {
+        const page: ScanPageModel = {
           id: createId(),
           projectId: currentProject.id,
           order: workingPages.length,
@@ -305,16 +322,6 @@ export function ScanPage() {
           adjustments: { ...DEFAULT_ADJUSTMENTS },
           createdAt: now,
           updatedAt: now,
-        }
-        try {
-          const thumbnail = await scannerClient.render(page, {
-            maxEdge: 560,
-            mimeType: 'image/jpeg',
-            quality: 0.76,
-          })
-          page = { ...page, thumbnail: thumbnail.blob }
-        } catch {
-          page = { ...page, thumbnail: file }
         }
         workingPages.push(page)
         added.push(page)
@@ -650,15 +657,7 @@ export function ScanPage() {
                     height={active.height}
                     corners={active.corners}
                     cornerSource={active.cornerSource}
-                    onChange={(corners) =>
-                      setActive({
-                        ...active,
-                        corners,
-                        cornerSource: 'manual',
-                        cropConfirmed: false,
-                        updatedAt: Date.now(),
-                      })
-                    }
+                    onChange={updateCropCorners}
                   />
                 )}
                 {stage === 'enhance' &&
@@ -751,12 +750,17 @@ export function ScanPage() {
                           updatedAt: Date.now(),
                         })
                       }
-                      onRotate={() =>
-                        setActive({
-                          ...active,
-                          rotation: ((active.rotation + 90) % 360) as ScanPageModel['rotation'],
-                          updatedAt: Date.now(),
-                        })
+                      onRotate={(direction) =>
+                        setActive((current) =>
+                          current?.id === active.id
+                            ? {
+                                ...current,
+                                rotation: ((current.rotation + (direction === 'clockwise' ? 90 : 270)) %
+                                  360) as ScanPageModel['rotation'],
+                                updatedAt: Date.now(),
+                              }
+                            : current,
+                        )
                       }
                     />
                     <div className="mt-6 grid grid-cols-2 gap-2">

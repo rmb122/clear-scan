@@ -77,6 +77,28 @@ describe('FilterPanel', () => {
     expect(screen.getByText('当前没有附加效果')).toBeInTheDocument()
   })
 
+  it('offers counterclockwise rotation before clockwise rotation', () => {
+    const onRotate = vi.fn()
+    render(
+      <FilterPanel
+        effects={ORIGINAL_EFFECTS}
+        adjustments={DEFAULT_ADJUSTMENTS}
+        glareLevel="none"
+        onEffectChange={vi.fn()}
+        onPresetApply={vi.fn()}
+        onAdjustmentsChange={vi.fn()}
+        onRotate={onRotate}
+      />,
+    )
+    const counterclockwise = screen.getByRole('button', { name: '逆时针旋转 90°' })
+    const clockwise = screen.getByRole('button', { name: '顺时针旋转 90°' })
+    expect(counterclockwise.compareDocumentPosition(clockwise) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(counterclockwise)
+    fireEvent.click(clockwise)
+    expect(onRotate.mock.calls).toEqual([['counterclockwise'], ['clockwise']])
+  })
+
   it('describes active glare repair and keeps fine-tuning controls collapsed', () => {
     render(
       <FilterPanel

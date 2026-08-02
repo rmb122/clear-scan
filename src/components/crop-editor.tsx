@@ -1,7 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { CornerSource, NormalizedQuad } from '@/lib/types'
 import { clamp } from '@/lib/geometry'
+
+interface ActiveDrag {
+  index: number
+  pointerId: number
+  changed: boolean
+}
+
+function cloneCorners(corners: NormalizedQuad) {
+  return corners.map((point) => ({ ...point })) as NormalizedQuad
+}
 
 export function CropEditor({
   sourceUrl,
@@ -19,32 +36,92 @@ export function CropEditor({
   onChange: (corners: NormalizedQuad) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dragging, setDragging] = useState<number>()
+  const [draftCorners, setDraftCorners] = useState(() => cloneCorners(corners))
+  const draftCornersRef = useRef(draftCorners)
+  const receivedCornersRef = useRef(corners)
+  const dragRef = useRef<ActiveDrag | undefined>(undefined)
+  const pendingPointRef = useRef<NormalizedQuad[number] | undefined>(undefined)
+  const frameRef = useRef<number | undefined>(undefined)
 
-  useEffect(() => {
-    if (dragging === undefined) return
-    const move = (event: PointerEvent) => {
+  useLayoutEffect(() => {
+    if (dragRef.current || receivedCornersRef.current === corners) return
+    receivedCornersRef.current = corners
+    const next = cloneCorners(corners)
+    draftCornersRef.current = next
+    setDraftCorners(next)
+  }, [corners])
+
+  const flushPendingPoint = useCallback(() => {
+    frameRef.current = undefined
+    const drag = dragRef.current
+    const point = pendingPointRef.current
+    if (!drag || !point) return draftCornersRef.current
+    pendingPointRef.current = undefined
+    const next = [...draftCornersRef.current] as NormalizedQuad
+    next[drag.index] = point
+    draftCornersRef.current = next
+    setDraftCorners(next)
+    return next
+  }, [])
+
+  const startDrag = useCallback((index: number, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (dragRef.current) return
+    event.preventDefault()
+    pendingPointRef.current = undefined
+    dragRef.current = {
+      index,
+      pointerId: event.pointerId,
+      changed: false,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }, [])
+
+  const moveDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = dragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
       const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const next = corners.map((point) => ({ ...point })) as NormalizedQuad
-      next[dragging] = {
+      if (!rect || rect.width <= 0 || rect.height <= 0) return
+      const point = {
         x: clamp((event.clientX - rect.left) / rect.width, 0.005, 0.995),
         y: clamp((event.clientY - rect.top) / rect.height, 0.005, 0.995),
       }
-      onChange(next)
-    }
-    const stop = () => setDragging(undefined)
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop, { once: true })
-    window.addEventListener('pointercancel', stop, { once: true })
-    return () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-    }
-  }, [corners, dragging, onChange])
+      const current = pendingPointRef.current ?? draftCornersRef.current[drag.index]
+      if (current.x === point.x && current.y === point.y) return
+      pendingPointRef.current = point
+      drag.changed = true
+      if (frameRef.current === undefined) {
+        frameRef.current = window.requestAnimationFrame(flushPendingPoint)
+      }
+    },
+    [flushPendingPoint],
+  )
 
-  const polygon = corners.map((point) => `${point.x * 100},${point.y * 100}`).join(' ')
+  const finishDrag = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = dragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      if (frameRef.current !== undefined) {
+        window.cancelAnimationFrame(frameRef.current)
+      }
+      const next = flushPendingPoint()
+      dragRef.current = undefined
+      pendingPointRef.current = undefined
+      if (drag.changed) {
+        receivedCornersRef.current = next
+        onChange(next)
+      }
+    },
+    [flushPendingPoint, onChange],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== undefined) window.cancelAnimationFrame(frameRef.current)
+    }
+  }, [])
+
+  const polygon = draftCorners.map((point) => `${point.x * 100},${point.y * 100}`).join(' ')
 
   return (
     <div className="flex size-full items-center justify-center px-3 pb-3 pt-12 sm:px-7 sm:pb-7 sm:pt-14">
@@ -78,8 +155,8 @@ export function CropEditor({
             strokeWidth="0.55"
             vectorEffect="non-scaling-stroke"
           />
-          {corners.map((point, index) => {
-            const next = corners[(index + 1) % corners.length]
+          {draftCorners.map((point, index) => {
+            const next = draftCorners[(index + 1) % draftCorners.length]
             return (
               <line
                 key={`line-${index}`}
@@ -95,7 +172,7 @@ export function CropEditor({
             )
           })}
         </svg>
-        {corners.map((point, index) => (
+        {draftCorners.map((point, index) => (
           <button
             key={index}
             type="button"
@@ -103,10 +180,12 @@ export function CropEditor({
             className="absolute z-10 grid size-11 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full bg-transparent outline-none transition hover:scale-105 focus-visible:ring-4 focus-visible:ring-white/75"
             style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
             onPointerDown={(event) => {
-              event.preventDefault()
-              event.currentTarget.setPointerCapture(event.pointerId)
-              setDragging(index)
+              startDrag(index, event)
             }}
+            onPointerMove={moveDrag}
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
+            onLostPointerCapture={finishDrag}
           >
             <span className="pointer-events-none size-8 rounded-full border-[3px] border-white bg-primary shadow-[0_2px_12px_rgba(0,0,0,.45)] ring-2 ring-primary/40" />
           </button>
