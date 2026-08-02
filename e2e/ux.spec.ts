@@ -37,8 +37,8 @@ async function storedPageState(page: Page, sourceName: string) {
 test('desktop and mobile shells expose useful empty, install, and fallback states', async ({ page }, testInfo) => {
   for (const [route, heading] of [
     ['/', /清晰扫描仪/],
-    ['/history', '扫描记录'],
-    ['/scan/document', '添加文档页面'],
+    ['/#/history', '扫描记录'],
+    ['/#/scan/document', '添加文档页面'],
   ] as const) {
     await page.goto(route)
     await expect(
@@ -53,11 +53,11 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
   await page.goto('/')
   await expect(page.getByRole('link', { name: '设置', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '本地图像引擎设置' })).toHaveCount(0)
-  await page.goto('/settings')
+  await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
-  await expect.poll(() => new URL(page.url()).pathname).toBe('/')
+  await expect.poll(() => new URL(page.url()).hash).toBe('#/')
 
-  await page.goto('/history')
+  await page.goto('/#/history')
   await expect(page.getByRole('heading', { name: '还没有扫描记录' })).toBeVisible()
   await expect(page.getByRole('link', { name: '开始第一次扫描' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: '搜索扫描项目' })).toHaveCount(0)
@@ -77,7 +77,7 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
     await expectNoHorizontalOverflow(page)
   }
 
-  await page.goto('/scan/document')
+  await page.goto('/#/scan/document')
   await page
     .locator('input[type="file"]')
     .nth(1)
@@ -96,7 +96,7 @@ test('web camera failure is actionable instead of staying busy', async ({ page }
       get: () => undefined,
     })
   })
-  await page.goto('/scan/document')
+  await page.goto('/#/scan/document')
   await page.getByRole('button', { name: '使用网页摄像头' }).click()
   await expect(page.getByRole('heading', { name: '摄像头拍摄' })).toBeVisible()
   await expect(page.getByText(/网页摄像头需要|没有提供网页摄像头接口/)).toBeVisible()
@@ -106,7 +106,7 @@ test('web camera failure is actionable instead of staying busy', async ({ page }
 test('scan editing stays reachable and survives rapid page changes on desktop and mobile', async ({
   page,
 }, testInfo) => {
-  await page.goto('/scan/document')
+  await page.goto('/#/scan/document')
   await page
     .locator('input[type="file"]')
     .nth(1)
@@ -118,7 +118,7 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
     timeout: 120_000,
   })
   await expect(page).toHaveURL(/\/project\//)
-  const projectPath = new URL(page.url()).pathname
+  const projectUrl = page.url()
 
   const handles = page.getByRole('button', { name: /拖动第 \d 个裁剪点/ })
   await expect(handles).toHaveCount(4)
@@ -210,7 +210,7 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
   await expect.poll(async () => (await storedPageState(page, 'page-one.png')).color).toBe('grayscale')
 
-  await page.goto(projectPath)
+  await page.goto(projectUrl)
   await expect(page.getByText('调整扫描效果')).toBeVisible({
     timeout: 120_000,
   })

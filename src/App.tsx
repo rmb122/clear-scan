@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/app-shell'
 
 const HomePage = lazy(() => import('@/pages/home-page').then((module) => ({ default: module.HomePage })))
@@ -8,7 +8,7 @@ const ScanPage = lazy(() => import('@/pages/scan-page').then((module) => ({ defa
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Suspense
         fallback={
           <div className="grid min-h-svh place-items-center text-sm font-semibold text-muted-foreground">
@@ -26,6 +26,6 @@ export default function App() {
           </Route>
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </HashRouter>
   )
 }

@@ -1,4 +1,4 @@
-import { FolderClock, Home, ScanLine, ShieldCheck } from 'lucide-react'
+import { Code2, FolderClock, Home, ScanLine, ShieldCheck } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BrandLogo } from './brand-logo'
@@ -45,6 +45,15 @@ export function AppShell() {
             <span className="hidden items-center gap-1.5 text-[11px] font-semibold text-muted-foreground lg:flex">
               <ShieldCheck className="size-3.5 text-primary" /> 图片仅在本机处理
             </span>
+            <a
+              href="https://github.com/rmb122/clear-scan"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="查看项目源代码"
+              className="grid size-9 place-items-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            >
+              <Code2 className="size-4" />
+            </a>
             <InstallButton />
           </div>
         </div>

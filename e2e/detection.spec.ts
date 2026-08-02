@@ -152,7 +152,7 @@ test('detects difficult document edges and rejects scenes without a document', a
   test.setTimeout(180_000)
   for (const scenario of cases) {
     await test.step(scenario.fixture, async () => {
-      await page.goto(`/scan/${scenario.mode}`)
+      await page.goto(`/#/scan/${scenario.mode}`)
       const fileName = `${scenario.fixture.replace(/\.svg$/, '')}.png`
       const buffer = await rasterizeSvg(page, scenario.fixture)
       await page.locator('input[type="file"]').nth(1).setInputFiles({
@@ -195,7 +195,7 @@ test('detects difficult document edges and rejects scenes without a document', a
 test('keeps the image worker stable across ten consecutive detections', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'One browser run is enough for the worker lifecycle check')
   test.setTimeout(180_000)
-  await page.goto('/scan/document')
+  await page.goto('/#/scan/document')
   const buffer = await rasterizeSvg(page, 'low-contrast.svg')
 
   for (let index = 0; index < 10; index += 1) {

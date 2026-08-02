@@ -23,7 +23,7 @@ class ScannerClient {
 
   private getWorker() {
     if (this.worker) return this.worker
-    const openCvUrl = new URL('/vendor/opencv.js', window.location.origin).href
+    const openCvUrl = new URL(`${import.meta.env.BASE_URL}vendor/opencv.js`, window.location.origin).href
     const moduleUrl = new URL(scannerWorkerUrl, window.location.origin).href
     const bootstrap = `
       const queuedMessages=[];

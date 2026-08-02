@@ -39,3 +39,11 @@ pnpm test:e2e
 - 当前版本不包含 OCR、云同步、账号或服务端上传。
 
 普通 HTTP 可测试图片上传、扫描和后处理；浏览器会限制非 localhost 地址的相机访问，以及 Service Worker/PWA 安装。部署到 HTTPS 后这些能力会自动启用。
+
+## 开源协议
+
+Copyright (C) 2026 rmb122
+
+本项目以 [GNU Affero General Public License version 3](./LICENSE) 发布，SPDX 标识为 `AGPL-3.0-only`。如果你修改本项目并通过网络向用户提供服务，需要依照该协议向这些用户提供对应版本的源代码。部署版本的源代码位于 [github.com/rmb122/clear-scan](https://github.com/rmb122/clear-scan)。
+
+完整条款以 [LICENSE](./LICENSE) 文件为准；项目使用的第三方依赖和资源仍分别遵循其各自的许可证。

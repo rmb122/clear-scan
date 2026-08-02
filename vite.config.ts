@@ -5,7 +5,10 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
+const pagesBase = process.env.GITHUB_ACTIONS === 'true' ? '/clear-scan/' : '/'
+
 export default defineConfig({
+  base: pagesBase,
   plugins: [
     react(),
     tailwindcss(),
@@ -28,13 +31,12 @@ export default defineConfig({
         theme_color: '#087f5b',
         background_color: '#f7f8f4',
         display: 'standalone',
-        start_url: '/',
         lang: 'zh-CN',
         icons: [
-          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
           {
-            src: '/pwa-512.png',
+            src: 'pwa-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -44,26 +46,26 @@ export default defineConfig({
           {
             name: '扫描身份证',
             short_name: '身份证',
-            url: '/scan/id-card',
-            icons: [{ src: '/pwa-192.png', sizes: '192x192' }],
+            url: './#/scan/id-card',
+            icons: [{ src: 'pwa-192.png', sizes: '192x192' }],
           },
           {
             name: '扫描护照',
             short_name: '护照',
-            url: '/scan/passport',
-            icons: [{ src: '/pwa-192.png', sizes: '192x192' }],
+            url: './#/scan/passport',
+            icons: [{ src: 'pwa-192.png', sizes: '192x192' }],
           },
           {
             name: '扫描文档',
             short_name: '文档',
-            url: '/scan/document',
-            icons: [{ src: '/pwa-192.png', sizes: '192x192' }],
+            url: './#/scan/document',
+            icons: [{ src: 'pwa-192.png', sizes: '192x192' }],
           },
         ],
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        navigateFallback: '/index.html',
+        navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
       },
     }),
