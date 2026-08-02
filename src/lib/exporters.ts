@@ -1,4 +1,5 @@
 import { fitWithin } from './geometry'
+import { getIdCardSheetLayout } from './id-card-layout'
 import { scannerClient } from './scanner-client'
 import type { ScanPage, ScanProject } from './types'
 import { sanitizeFileName } from './utils'
@@ -56,19 +57,27 @@ async function composeIdCard(
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
 
-  const cardWidth = Math.round((85.6 / 25.4) * 300)
-  const cardHeight = Math.round((53.98 / 25.4) * 300)
-  const gap = 220
-  const startY = Math.round((canvas.height - cardHeight * 2 - gap) / 2)
-  const x = Math.round((canvas.width - cardWidth) / 2)
+  const layout = getIdCardSheetLayout(canvas.width, canvas.height)
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = 'high'
-  context.drawImage(frontBitmap, x, startY, cardWidth, cardHeight)
-  context.drawImage(backBitmap, x, startY + cardHeight + gap, cardWidth, cardHeight)
+  context.drawImage(
+    frontBitmap,
+    layout.front.x,
+    layout.front.y,
+    layout.front.width,
+    layout.front.height,
+  )
+  context.drawImage(
+    backBitmap,
+    layout.back.x,
+    layout.back.y,
+    layout.back.width,
+    layout.back.height,
+  )
   frontBitmap.close()
   backBitmap.close()
 
-  onProgress?.(85, '正在生成 A4 合并页')
+  onProgress?.(85, '正在生成 A4 大图合并页')
   const blob = await canvasToBlob(canvas, mimeType)
   return { blob, width: canvas.width, height: canvas.height }
 }

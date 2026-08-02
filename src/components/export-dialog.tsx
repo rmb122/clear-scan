@@ -36,7 +36,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
     {
       value: 'pdf',
       label: 'PDF 文档',
-      description: project.mode === 'id-card' ? 'A4 单页' : `${pages.length} 页`,
+      description: project.mode === 'id-card' ? 'A4 单页 · 大图排版' : `${pages.length} 页`,
       icon: FileText,
     },
     {
