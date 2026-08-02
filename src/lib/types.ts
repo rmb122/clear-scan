@@ -32,11 +32,14 @@ export interface Point {
 
 export type NormalizedQuad = [Point, Point, Point, Point]
 
+export const DEFAULT_WHITENING_STRENGTH = 88
+
 export interface EnhancementSettings {
   brightness: number
   contrast: number
   sharpness: number
   shadowStrength: number
+  whiteningStrength: number
 }
 
 export interface ScanProject {
@@ -123,6 +126,7 @@ export const DEFAULT_ADJUSTMENTS: EnhancementSettings = {
   contrast: 0,
   sharpness: 50,
   shadowStrength: 80,
+  whiteningStrength: DEFAULT_WHITENING_STRENGTH,
 }
 
 export const ORIGINAL_EFFECTS: EnhancementEffects = {

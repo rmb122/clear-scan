@@ -267,7 +267,17 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   const colorBefore = await page.getByRole('img', { name: '扫描增强预览' }).getAttribute('src')
   const colorSource = await selectEffect(page, '色彩风格', '彩色增强', colorBefore)
   const color = await readRegions(page)
-  const graySource = await selectEffect(page, '色彩风格', '灰度', colorSource)
+  await page.getByText('高级微调', { exact: true }).click()
+  const whitening = page.getByRole('slider', { name: '增白强度' })
+  await expect(whitening).toHaveAttribute('aria-valuenow', '88')
+  await whitening.press('Home')
+  const whiteningOffSource = await waitForPreviewChange(page, colorSource)
+  const whiteningOff = await readRegions(page)
+  await whitening.press('End')
+  const whiteningMaxSource = await waitForPreviewChange(page, whiteningOffSource)
+  const whiteningMax = await readRegions(page)
+
+  const graySource = await selectEffect(page, '色彩风格', '灰度', whiteningMaxSource)
   const grayscale = await readRegions(page)
   const blackWhiteSource = await selectEffect(page, '色彩风格', '黑白', graySource)
   const blackWhite = await readRegions(page)
@@ -311,6 +321,12 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
     (original.lowAround.luma - original.lowInk.luma) * 1.35,
   )
   expect(color.noisePaper.deviation).toBeLessThan(2)
+  expect(whiteningMax.leftPaper.luma + whiteningMax.rightPaper.luma).toBeGreaterThan(
+    whiteningOff.leftPaper.luma + whiteningOff.rightPaper.luma + 6,
+  )
+  expect(whiteningMax.leftPaper.saturation + whiteningMax.rightPaper.saturation).toBeLessThan(
+    whiteningOff.leftPaper.saturation + whiteningOff.rightPaper.saturation,
+  )
 
   expect(Math.abs(grayscale.rightPaper.red - grayscale.rightPaper.green)).toBeLessThan(0.5)
   expect(Math.min(grayscale.leftPaper.luma, grayscale.rightPaper.luma)).toBeGreaterThan(235)

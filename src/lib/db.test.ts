@@ -9,7 +9,14 @@ import {
   updatePageWithThumbnail,
 } from './db'
 import { DEFAULT_QUAD } from './geometry'
-import { DEFAULT_ADJUSTMENTS, SMART_EFFECTS, type ScanPage, type ScanProject } from './types'
+import {
+  DEFAULT_ADJUSTMENTS,
+  DEFAULT_WHITENING_STRENGTH,
+  SMART_EFFECTS,
+  type EnhancementSettings,
+  type ScanPage,
+  type ScanProject,
+} from './types'
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -60,6 +67,11 @@ describe('local scan repository', () => {
     expect(stored.pages.map((page) => page.id)).toEqual(['page-1', 'page-2'])
     expect(stored.pages[0].source).toBeInstanceOf(Blob)
     expect(stored.pages[0].thumbnail).toBeInstanceOf(Blob)
+
+    const { whiteningStrength: _legacyMissingField, ...legacyAdjustments } = DEFAULT_ADJUSTMENTS
+    await db.pages.update('page-1', { adjustments: legacyAdjustments as EnhancementSettings })
+    const migrated = await getProjectWithPages(project.id)
+    expect(migrated.pages[0].adjustments.whiteningStrength).toBe(DEFAULT_WHITENING_STRENGTH)
 
     const sourceRead = vi.spyOn(firstPage.source, 'arrayBuffer')
     await updatePageMetadata({ ...firstPage, rotation: 90, updatedAt: now + 1 })

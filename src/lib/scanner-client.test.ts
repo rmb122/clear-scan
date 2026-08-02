@@ -113,6 +113,15 @@ describe('render cache keys', () => {
     const original = makePage()
     expect(createRenderCacheKey({ ...original, updatedAt: 99 }, options)).toBe(createRenderCacheKey(original, options))
     expect(createRenderCacheKey(makePage(1), options)).not.toBe(createRenderCacheKey(original, options))
+    expect(
+      createRenderCacheKey(
+        {
+          ...original,
+          adjustments: { ...original.adjustments, whiteningStrength: 40 },
+        },
+        options,
+      ),
+    ).not.toBe(createRenderCacheKey(original, options))
     expect(createRenderCacheKey(original, { ...options, maxEdge: 2999 })).not.toBe(
       createRenderCacheKey(original, options),
     )

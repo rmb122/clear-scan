@@ -81,7 +81,8 @@ function adjustmentsEqual(left: EnhancementSettings, right: EnhancementSettings)
     left.brightness === right.brightness &&
     left.contrast === right.contrast &&
     left.sharpness === right.sharpness &&
-    left.shadowStrength === right.shadowStrength
+    left.shadowStrength === right.shadowStrength &&
+    left.whiteningStrength === right.whiteningStrength
   )
 }
 
@@ -167,6 +168,9 @@ export function FilterPanel({
   }> = [
     { key: 'brightness', label: '亮度', min: -40, max: 40 },
     { key: 'contrast', label: '对比度', min: -30, max: 40 },
+    ...(effects.color === 'enhanced-color'
+      ? [{ key: 'whiteningStrength' as const, label: '增白强度', min: 0, max: 100 }]
+      : []),
     ...(effects.shadow !== 'none'
       ? [
           {

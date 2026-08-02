@@ -75,6 +75,7 @@ export function createRenderCacheKey(page: ScanPage, options: RenderOptions) {
     page.adjustments.contrast,
     page.adjustments.sharpness,
     page.adjustments.shadowStrength,
+    page.adjustments.whiteningStrength,
     options.maxEdge,
     options.mimeType,
     options.quality ?? 0.92,

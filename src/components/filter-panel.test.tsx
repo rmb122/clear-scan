@@ -94,6 +94,17 @@ describe('FilterPanel', () => {
     expect(screen.queryByText('均衡强度')).not.toBeInTheDocument()
   })
 
+  it('offers whitening strength only for enhanced colour', () => {
+    render(<StatefulFilterPanel />)
+
+    expect(screen.queryByRole('slider', { name: '增白强度' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '彩色增强' }))
+    expect(screen.getByRole('slider', { name: '增白强度' })).toHaveAttribute('aria-valuenow', '88')
+
+    fireEvent.click(screen.getByRole('button', { name: '灰度' }))
+    expect(screen.queryByRole('slider', { name: '增白强度' })).not.toBeInTheDocument()
+  })
+
   it('offers counterclockwise rotation before clockwise rotation', () => {
     const onRotate = vi.fn()
     render(

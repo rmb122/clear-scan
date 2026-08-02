@@ -14,6 +14,7 @@ import {
   type LineEquation,
 } from '@/lib/document-detection'
 import { clamp, distance, orderPoints } from '@/lib/geometry'
+import { DEFAULT_WHITENING_STRENGTH } from '@/lib/types'
 import type {
   DetectionResult,
   EnhancementEffects,
@@ -1145,7 +1146,12 @@ function applyBrightnessBalance(cv: CV, source: Mat, strength: number) {
   }
 }
 
-function applyDocumentColorEnhancement(cv: CV, output: Mat, flattenPaper: boolean) {
+function applyDocumentColorEnhancement(
+  cv: CV,
+  output: Mat,
+  flattenPaper: boolean,
+  whiteningStrength = DEFAULT_WHITENING_STRENGTH,
+) {
   // Market-style colour modes clean the paper as well as boosting coloured ink.
   // They perform their own base flattening only when the shadow category is off;
   // otherwise they consume the selected light correction without stacking it.
@@ -1159,6 +1165,14 @@ function applyDocumentColorEnhancement(cv: CV, output: Mat, flattenPaper: boolea
   const blackPoint = histogramPercentile(histogram, count, 0.015)
   const paperPoint = Math.max(blackPoint + 48, histogramPercentile(histogram, count, 0.86))
   const range = paperPoint - blackPoint
+  const normalizedWhitening = clamp(whiteningStrength, 0, 100)
+  const whiteningAmount = clamp(normalizedWhitening / DEFAULT_WHITENING_STRENGTH, 0, 1)
+  const extraWhitening = clamp(
+    (normalizedWhitening - DEFAULT_WHITENING_STRENGTH) / (100 - DEFAULT_WHITENING_STRENGTH),
+    0,
+    1,
+  )
+  const neutralizationAmount = whiteningAmount
 
   for (let index = 0; index < data.length; index += 4) {
     const red = clamp(data[index] * redScale, 0, 255)
@@ -1168,9 +1182,12 @@ function applyDocumentColorEnhancement(cv: CV, output: Mat, flattenPaper: boolea
     const normalized = clamp((light - blackPoint) / range, 0, 1)
     const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
     const paperMask = smoothstep(0.76, 0.98, normalized) * (1 - smoothstep(20, 74, saturation))
-    let targetLight = 8 + 240 * normalized ** 0.8
-    targetLight = mix(targetLight, 248, paperMask * 0.88)
-    const chromaScale = mix(1.17, 0.08, paperMask)
+    const enhancedLight = 8 + 240 * normalized ** 0.8
+    const preservedPaperLight = mix(enhancedLight, light, paperMask)
+    const defaultPaperLight = mix(enhancedLight, 248, paperMask * (DEFAULT_WHITENING_STRENGTH / 100))
+    let targetLight = mix(preservedPaperLight, defaultPaperLight, whiteningAmount)
+    targetLight = mix(targetLight, 250, paperMask * extraWhitening)
+    const chromaScale = mix(1.17, 0.08, paperMask * neutralizationAmount)
     data[index] = clamp(targetLight + (red - light) * chromaScale, 0, 255)
     data[index + 1] = clamp(targetLight + (green - light) * chromaScale, 0, 255)
     data[index + 2] = clamp(targetLight + (blue - light) * chromaScale, 0, 255)
@@ -1233,9 +1250,15 @@ function applyBlackWhiteDocument(cv: CV, output: Mat, flattenPaper: boolean) {
   }
 }
 
-function applyColorEffect(cv: CV, output: Mat, effect: EnhancementEffects['color'], flattenPaper: boolean) {
+function applyColorEffect(
+  cv: CV,
+  output: Mat,
+  effect: EnhancementEffects['color'],
+  flattenPaper: boolean,
+  whiteningStrength: number,
+) {
   if (effect === 'enhanced-color') {
-    applyDocumentColorEnhancement(cv, output, flattenPaper)
+    applyDocumentColorEnhancement(cv, output, flattenPaper, whiteningStrength)
   } else if (effect === 'grayscale') {
     applyGrayscaleDocument(cv, output, flattenPaper)
   } else if (effect === 'black-white') {
@@ -1283,7 +1306,7 @@ function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjust
       applyGlareReduction(cv, output)
     }
     applyToneAdjustments(output, adjustments)
-    applyColorEffect(cv, output, effects.color, effects.shadow === 'none')
+    applyColorEffect(cv, output, effects.color, effects.shadow === 'none', adjustments.whiteningStrength)
     if (effects.detail === 'sharpen') {
       applyDetailEnhancement(cv, output, adjustments.sharpness)
     }
