@@ -44,20 +44,24 @@ describe('FilterPanel', () => {
     render(<StatefulFilterPanel />)
 
     const shadow = screen.getByRole('button', { name: '标准去阴影' })
+    const balance = screen.getByRole('button', { name: '亮度均衡' })
     const enhancedColor = screen.getByRole('button', { name: '彩色增强' })
     const blackWhite = screen.getByRole('button', { name: '黑白' })
     const sharpen = screen.getByRole('button', { name: '加锐' })
     fireEvent.click(shadow)
+    expect(shadow).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(balance)
     fireEvent.click(enhancedColor)
     fireEvent.click(sharpen)
-    expect(shadow).toHaveAttribute('aria-pressed', 'true')
+    expect(shadow).toHaveAttribute('aria-pressed', 'false')
+    expect(balance).toHaveAttribute('aria-pressed', 'true')
     expect(enhancedColor).toHaveAttribute('aria-pressed', 'true')
     expect(sharpen).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(blackWhite)
     expect(blackWhite).toHaveAttribute('aria-pressed', 'true')
     expect(enhancedColor).toHaveAttribute('aria-pressed', 'false')
-    expect(shadow).toHaveAttribute('aria-pressed', 'true')
+    expect(balance).toHaveAttribute('aria-pressed', 'true')
     expect(sharpen).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -67,7 +71,8 @@ describe('FilterPanel', () => {
     const smart = screen.getByRole('button', { name: '智能增强' })
     fireEvent.click(smart)
     expect(smart).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '标准去阴影' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '亮度均衡' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '标准去阴影' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: '去反光' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '彩色增强' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '加锐' })).toHaveAttribute('aria-pressed', 'true')
@@ -75,6 +80,18 @@ describe('FilterPanel', () => {
     fireEvent.click(original)
     expect(original).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('当前没有附加效果')).toBeInTheDocument()
+  })
+
+  it('uses a matching strength label for each light correction', () => {
+    render(<StatefulFilterPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: '亮度均衡' }))
+    expect(screen.getByText('均衡强度')).toBeInTheDocument()
+    expect(screen.queryByText('阴影强度')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '标准去阴影' }))
+    expect(screen.getByText('阴影强度')).toBeInTheDocument()
+    expect(screen.queryByText('均衡强度')).not.toBeInTheDocument()
   })
 
   it('offers counterclockwise rotation before clockwise rotation', () => {

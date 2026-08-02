@@ -109,6 +109,7 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   })
   await expect(page.getByText(/检测到(?:轻微反光|明显过曝区域)/)).toHaveCount(0)
   const shadow = page.getByRole('button', { name: '标准去阴影', exact: true })
+  const balance = page.getByRole('button', { name: '亮度均衡', exact: true })
   const glare = page.getByRole('button', { name: '去反光', exact: true })
   const sharpen = page.getByRole('button', { name: '加锐', exact: true })
   const enhancedColor = page.getByRole('button', {
@@ -116,14 +117,36 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
     exact: true,
   })
   const blackWhite = page.getByRole('button', { name: '黑白', exact: true })
-  await expect(shadow).toHaveAttribute('aria-pressed', 'true')
+  const originalPreset = page.getByRole('button', { name: '原版', exact: true })
+  const smartPreset = page.getByRole('button', { name: '智能增强', exact: true })
+  const lightGroup = page.getByRole('group', { name: '光照修复' })
+  const lightOff = lightGroup.getByRole('button', { name: '关闭', exact: true })
+  const [originalBox, smartBox, lightOffBox, shadowBox, balanceBox] = await Promise.all([
+    originalPreset.boundingBox(),
+    smartPreset.boundingBox(),
+    lightOff.boundingBox(),
+    shadow.boundingBox(),
+    balance.boundingBox(),
+  ])
+  expect(originalBox).not.toBeNull()
+  expect(smartBox).not.toBeNull()
+  expect(lightOffBox).not.toBeNull()
+  expect(shadowBox).not.toBeNull()
+  expect(balanceBox).not.toBeNull()
+  expect(smartBox!.y).toBeGreaterThanOrEqual(originalBox!.y + originalBox!.height)
+  expect(Math.abs(smartBox!.width - originalBox!.width)).toBeLessThanOrEqual(1)
+  expect(lightOffBox!.width).toBeGreaterThan(shadowBox!.width * 1.8)
+  expect(Math.abs(shadowBox!.y - balanceBox!.y)).toBeLessThanOrEqual(1)
+  expect(shadowBox!.x + shadowBox!.width).toBeLessThanOrEqual(balanceBox!.x)
+  await expect(balance).toHaveAttribute('aria-pressed', 'true')
+  await expect(shadow).toHaveAttribute('aria-pressed', 'false')
   await expect(glare).toHaveAttribute('aria-pressed', 'true')
   await expect(enhancedColor).toHaveAttribute('aria-pressed', 'true')
   await expect(sharpen).toHaveAttribute('aria-pressed', 'true')
   await blackWhite.click()
   await expect(blackWhite).toHaveAttribute('aria-pressed', 'true')
   await expect(enhancedColor).toHaveAttribute('aria-pressed', 'false')
-  await expect(shadow).toHaveAttribute('aria-pressed', 'true')
+  await expect(balance).toHaveAttribute('aria-pressed', 'true')
   await expect(glare).toHaveAttribute('aria-pressed', 'true')
   await expect(sharpen).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: '保存页面' }).click()

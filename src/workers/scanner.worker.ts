@@ -1039,10 +1039,44 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number
   }
 }
 
+function applyBrightnessBalance(cv: CV, source: Mat, strength: number) {
+  const normalizedStrength = clamp(strength, 0, 100) / 100
+  if (normalizedStrength === 0) return
+
+  const illumination = estimatePaperIllumination(cv, source)
+  try {
+    const dark = percentile(illumination.data, 0.15)
+    const bright = percentile(illumination.data, 0.85)
+    // Avoid shifting scans that already have even lighting. Exposure changes
+    // on an even page belong to the global brightness adjustment instead.
+    if (bright - dark < 6) return
+
+    // The midpoint of both lighting extremes stays neutral even when a bright
+    // hotspot covers most of the page. A median target would otherwise match
+    // that dominant bright area and only lift the remaining shadows.
+    const target = (dark + bright) / 2
+    const blend = Math.sqrt(normalizedStrength)
+    const pixels = source.data
+    for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
+      const background = Math.max(24, illumination.data[pixel])
+      // Unlike shadow removal, this correction works in both directions:
+      // shaded areas are lifted while overly lit areas are reduced toward the
+      // shared target exposure. Matching RGB gains preserve the original hue.
+      const ratio = clamp(target / background, 0.72, 1.8)
+      const gain = 1 + (ratio - 1) * blend
+      pixels[index] = clamp(pixels[index] * gain, 0, 255)
+      pixels[index + 1] = clamp(pixels[index + 1] * gain, 0, 255)
+      pixels[index + 2] = clamp(pixels[index + 2] * gain, 0, 255)
+    }
+  } finally {
+    illumination.delete()
+  }
+}
+
 function applyDocumentColorEnhancement(cv: CV, output: Mat, flattenPaper: boolean) {
   // Market-style colour modes clean the paper as well as boosting coloured ink.
   // They perform their own base flattening only when the shadow category is off;
-  // otherwise they consume that category's standard or AI result without stacking it.
+  // otherwise they consume the selected light correction without stacking it.
   if (flattenPaper) applyClassicalShadowRemoval(cv, output, 90)
   const data = output.data
   const whitePoint = estimatePaperWhitePoint(data)
@@ -1162,10 +1196,18 @@ function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
 function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjustments: EnhancementSettings) {
   const output = source.clone()
   try {
+    const glareHandledBeforeBalance = effects.shadow === 'balance' && effects.glare === 'deglare'
+    // Preserve highlight detection by repairing glare before brightness
+    // balancing can lower its luminance below the recovery threshold.
+    if (glareHandledBeforeBalance) {
+      applyGlareReduction(cv, output)
+    }
     if (effects.shadow === 'deshadow') {
       applyClassicalShadowRemoval(cv, output, adjustments.shadowStrength)
+    } else if (effects.shadow === 'balance') {
+      applyBrightnessBalance(cv, output, adjustments.shadowStrength)
     }
-    if (effects.glare === 'deglare') {
+    if (effects.glare === 'deglare' && !glareHandledBeforeBalance) {
       applyGlareReduction(cv, output)
     }
     applyToneAdjustments(output, adjustments)

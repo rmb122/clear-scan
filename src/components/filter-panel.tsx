@@ -31,10 +31,11 @@ interface EffectGroup {
 const effectGroups: EffectGroup[] = [
   {
     key: 'shadow',
-    label: '阴影修复',
+    label: '光照修复',
     options: [
       { value: 'none', label: '关闭' },
       { value: 'deshadow', label: '标准去阴影' },
+      { value: 'balance', label: '亮度均衡' },
     ],
   },
   {
@@ -86,6 +87,7 @@ function adjustmentsEqual(left: EnhancementSettings, right: EnhancementSettings)
 function activeEffectLabels(effects: EnhancementEffects) {
   const labels: string[] = []
   if (effects.shadow === 'deshadow') labels.push('标准去阴影')
+  if (effects.shadow === 'balance') labels.push('亮度均衡')
   if (effects.glare === 'deglare') labels.push('去反光')
   if (effects.color === 'grayscale') labels.push('灰度')
   if (effects.color === 'black-white') labels.push('黑白')
@@ -132,7 +134,7 @@ export function FilterPanel({
       ? [
           {
             key: 'shadowStrength' as const,
-            label: '阴影强度',
+            label: effects.shadow === 'balance' ? '均衡强度' : '阴影强度',
             min: 0,
             max: 100,
           },
@@ -165,8 +167,8 @@ export function FilterPanel({
                   ? '已启用去反光，正在压制可识别的高光；纯白区域的文字无法恢复时请换个角度重拍。'
                   : '检测到明显过曝区域。建议启用去反光；纯白区域的文字无法恢复时请换个角度重拍。'
                 : glareRepairEnabled
-                  ? '已启用去反光，可与阴影修复同时使用。'
-                  : '检测到轻微反光，可以与阴影修复同时启用。'}
+                  ? '已启用去反光，可与光照修复同时使用。'
+                  : '检测到轻微反光，可以与光照修复同时启用。'}
             </span>
           </div>
         </div>
@@ -180,7 +182,7 @@ export function FilterPanel({
           </h3>
           <Badge variant="secondary">{activePreset === 'custom' ? '自定义组合' : '推荐方案'}</Badge>
         </div>
-        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted p-1.5">
+        <div className="grid gap-1.5 rounded-2xl bg-muted p-1.5">
           {[
             {
               value: 'original' as const,
@@ -190,7 +192,7 @@ export function FilterPanel({
             {
               value: 'smart' as const,
               label: '智能增强',
-              description: '净白＋去反光＋清晰文字',
+              description: '均衡光照＋去反光＋清晰文字',
             },
           ].map((preset) => (
             <button
@@ -200,17 +202,17 @@ export function FilterPanel({
               aria-pressed={activePreset === preset.value}
               onClick={() => onPresetApply(preset.value)}
               className={cn(
-                'rounded-xl px-3 py-2.5 text-left transition',
+                'flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition',
                 activePreset === preset.value
                   ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
                   : 'text-muted-foreground hover:bg-background/65',
               )}
             >
-              <span className="flex items-center gap-1.5 text-xs font-bold">
+              <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
                 {activePreset === preset.value && <Check className="size-3.5 text-primary" />}
                 {preset.label}
               </span>
-              <span className="mt-0.5 block text-[10px]">{preset.description}</span>
+              <span className="text-right text-[10px] leading-4">{preset.description}</span>
             </button>
           ))}
         </div>
@@ -236,7 +238,7 @@ export function FilterPanel({
           {effectGroups.map((group) => (
             <fieldset key={group.key} className="rounded-2xl border border-border/80 p-3">
               <legend className="px-1 text-xs font-bold">{group.label}</legend>
-              <div className={cn('mt-1 grid gap-1.5', group.options.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+              <div className="mt-1 grid grid-cols-2 gap-1.5">
                 {group.options.map((option) => {
                   const selected = effects[group.key] === option.value
                   return (
@@ -248,12 +250,13 @@ export function FilterPanel({
                       onClick={() => selectEffect(group.key, option.value)}
                       className={cn(
                         'relative min-h-10 rounded-xl border px-2 py-2 text-xs font-semibold transition',
+                        group.key === 'shadow' && option.value === 'none' && 'col-span-2',
                         selected
                           ? 'border-primary bg-primary/8 text-primary ring-1 ring-primary/15'
                           : 'border-transparent bg-muted/70 text-muted-foreground hover:border-primary/20 hover:text-foreground',
                       )}
                     >
-                      <span className="inline-flex items-center justify-center gap-1">
+                      <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
                         {selected && <Check className="size-3.5" />}
                         {option.label}
                       </span>
@@ -301,13 +304,13 @@ export function FilterPanel({
       </details>
 
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" onClick={() => onRotate('counterclockwise')}>
+        <Button aria-label="逆时针旋转 90°" variant="outline" onClick={() => onRotate('counterclockwise')}>
           <RotateCcw />
-          逆时针旋转 90°
+          逆时针 90°
         </Button>
-        <Button variant="outline" onClick={() => onRotate('clockwise')}>
+        <Button aria-label="顺时针旋转 90°" variant="outline" onClick={() => onRotate('clockwise')}>
           <RotateCw />
-          顺时针旋转 90°
+          顺时针 90°
         </Button>
       </div>
     </div>

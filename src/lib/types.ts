@@ -4,7 +4,7 @@ export type PassportLayout = 'data-page' | 'spread'
 
 export type PageRole = 'front' | 'back' | 'page'
 
-type ShadowEffect = 'none' | 'deshadow'
+type ShadowEffect = 'none' | 'deshadow' | 'balance'
 
 type GlareEffect = 'none' | 'deglare'
 
@@ -118,7 +118,7 @@ export const DEFAULT_ADJUSTMENTS: EnhancementSettings = {
   brightness: 0,
   contrast: 0,
   sharpness: 50,
-  shadowStrength: 50,
+  shadowStrength: 80,
 }
 
 export const ORIGINAL_EFFECTS: EnhancementEffects = {
@@ -129,7 +129,7 @@ export const ORIGINAL_EFFECTS: EnhancementEffects = {
 }
 
 export const SMART_EFFECTS: EnhancementEffects = {
-  shadow: 'deshadow',
+  shadow: 'balance',
   glare: 'deglare',
   color: 'enhanced-color',
   detail: 'sharpen',

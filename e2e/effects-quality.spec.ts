@@ -96,6 +96,59 @@ async function createQualityFixture(page: Page) {
   return Buffer.from(bytes)
 }
 
+async function createEvenLightingFixture(page: Page) {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 720
+    canvas.height = 960
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#d8cfbd'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#394541'
+    for (let row = 0; row < 7; row += 1) {
+      context.fillRect(120, 250 + row * 62, 420 - row * 24, 9)
+    }
+    context.fillStyle = '#a94f45'
+    context.fillRect(120, 110, 150, 64)
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
+    return Array.from(new Uint8Array(await blob.arrayBuffer()))
+  })
+  return Buffer.from(bytes)
+}
+
+async function createBrightDominantFixture(page: Page) {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 720
+    canvas.height = 960
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#d2c8b3'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#34433f'
+    for (let row = 0; row < 6; row += 1) {
+      context.fillRect(120, 390 + row * 58, 430 - row * 28, 9)
+    }
+    context.fillStyle = '#a84e45'
+    context.fillRect(120, 105, 145, 62)
+    context.fillStyle = '#397e9f'
+    context.fillRect(455, 105, 150, 62)
+
+    // Simulate a lamp covering most of the page while the left edge remains
+    // heavily shaded. The dominant bright area catches median-target regressions.
+    const lighting = context.createLinearGradient(0, 0, canvas.width, 0)
+    lighting.addColorStop(0, 'rgba(20,31,36,.52)')
+    lighting.addColorStop(0.24, 'rgba(20,31,36,.42)')
+    lighting.addColorStop(0.38, 'rgba(255,255,255,.18)')
+    lighting.addColorStop(1, 'rgba(255,255,255,.24)')
+    context.fillStyle = lighting
+    context.fillRect(0, 0, canvas.width, canvas.height)
+
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
+    return Array.from(new Uint8Array(await blob.arrayBuffer()))
+  })
+  return Buffer.from(bytes)
+}
+
 async function readRegions(page: Page) {
   return page.getByRole('img', { name: '扫描增强预览' }).evaluate((image: HTMLImageElement) => {
     const canvas = document.createElement('canvas')
@@ -154,6 +207,7 @@ async function readRegions(page: Page) {
     }
     return {
       leftPaper: stats(0.12, 0.26, 0.255, 0.29),
+      middlePaper: stats(0.46, 0.54, 0.255, 0.29),
       rightPaper: stats(0.72, 0.86, 0.255, 0.29),
       darkInk: stats(0.18, 0.72, 0.322, 0.344),
       darkAround: stats(0.18, 0.72, 0.285, 0.305),
@@ -197,9 +251,13 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   const originalSource = await waitForPreviewChange(page, initial)
   const original = await readRegions(page)
 
-  const shadowSource = await selectEffect(page, '阴影修复', '标准去阴影', originalSource)
+  const shadowSource = await selectEffect(page, '光照修复', '标准去阴影', originalSource)
   const shadow = await readRegions(page)
-  await selectEffect(page, '阴影修复', '关闭', shadowSource)
+  const shadowOffSource = await selectEffect(page, '光照修复', '关闭', shadowSource)
+
+  const balanceSource = await selectEffect(page, '光照修复', '亮度均衡', shadowOffSource)
+  const balance = await readRegions(page)
+  await selectEffect(page, '光照修复', '关闭', balanceSource)
 
   const glareBefore = await page.getByRole('img', { name: '扫描增强预览' }).getAttribute('src')
   const glareSource = await selectEffect(page, '反光修复', '去反光', glareBefore)
@@ -213,7 +271,7 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   const grayscale = await readRegions(page)
   const blackWhiteSource = await selectEffect(page, '色彩风格', '黑白', graySource)
   const blackWhite = await readRegions(page)
-  await selectEffect(page, '阴影修复', '标准去阴影', blackWhiteSource)
+  await selectEffect(page, '光照修复', '亮度均衡', blackWhiteSource)
   const combinedBlackWhite = await readRegions(page)
 
   const combinedSource = await page.getByRole('img', { name: '扫描增强预览' }).getAttribute('src')
@@ -228,6 +286,15 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   expect(shadow.darkAround.luma - shadow.darkInk.luma).toBeGreaterThan(
     (original.darkAround.luma - original.darkInk.luma) * 0.95,
   )
+
+  const balancedVariation = Math.abs(balance.rightPaper.luma - balance.leftPaper.luma)
+  expect(balancedVariation).toBeLessThan(originalShadowVariation * 0.45)
+  expect(Math.abs(balance.middlePaper.luma - original.middlePaper.luma)).toBeLessThan(12)
+  expect(balance.darkAround.luma - balance.darkInk.luma).toBeGreaterThan(
+    (original.darkAround.luma - original.darkInk.luma) * 0.85,
+  )
+  expect(balance.redMark.saturation).toBeGreaterThan(original.redMark.saturation * 0.85)
+  expect(balance.blueMark.saturation).toBeGreaterThan(original.blueMark.saturation * 0.7)
 
   expect(glare.glare.luma).toBeLessThan(original.glare.luma - 10)
   expect(glare.glare.saturation).toBeGreaterThan(original.glare.saturation * 1.6)
@@ -275,4 +342,57 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   expect(smart.redHalo.luma).toBeGreaterThan(242)
   expect(smart.redHalo.saturation).toBeLessThan(5)
   expect(smart.lowAround.luma - smart.lowInk.luma).toBeGreaterThan(original.lowAround.luma - original.lowInk.luma)
+})
+
+test('brightness balance leaves evenly lit scans stable', async ({ page }) => {
+  await page.goto('/scan/document')
+  await page
+    .locator('input[type="file"]')
+    .nth(1)
+    .setInputFiles({
+      name: 'even-lighting.png',
+      mimeType: 'image/png',
+      buffer: await createEvenLightingFixture(page),
+    })
+  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+  await page.getByRole('button', { name: '确认裁剪' }).click()
+  const initial = await waitForPreviewChange(page)
+  await page.getByRole('button', { name: '原版', exact: true }).click()
+  const originalSource = await waitForPreviewChange(page, initial)
+  const original = await readRegions(page)
+
+  await selectEffect(page, '光照修复', '亮度均衡', originalSource)
+  const balanced = await readRegions(page)
+
+  expect(Math.abs(balanced.leftPaper.luma - original.leftPaper.luma)).toBeLessThan(3)
+  expect(Math.abs(balanced.middlePaper.luma - original.middlePaper.luma)).toBeLessThan(3)
+  expect(Math.abs(balanced.rightPaper.luma - original.rightPaper.luma)).toBeLessThan(3)
+})
+
+test('brightness balance lowers a dominant bright area while lifting shadows', async ({ page }) => {
+  await page.goto('/scan/document')
+  await page
+    .locator('input[type="file"]')
+    .nth(1)
+    .setInputFiles({
+      name: 'bright-dominant.png',
+      mimeType: 'image/png',
+      buffer: await createBrightDominantFixture(page),
+    })
+  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+  await page.getByRole('button', { name: '确认裁剪' }).click()
+  const initial = await waitForPreviewChange(page)
+  await page.getByRole('button', { name: '原版', exact: true }).click()
+  const originalSource = await waitForPreviewChange(page, initial)
+  const original = await readRegions(page)
+
+  await selectEffect(page, '光照修复', '亮度均衡', originalSource)
+  const balanced = await readRegions(page)
+  const originalVariation = original.rightPaper.luma - original.leftPaper.luma
+  const balancedVariation = Math.abs(balanced.rightPaper.luma - balanced.leftPaper.luma)
+
+  expect(originalVariation).toBeGreaterThan(60)
+  expect(balanced.leftPaper.luma).toBeGreaterThan(original.leftPaper.luma + 20)
+  expect(balanced.rightPaper.luma).toBeLessThan(original.rightPaper.luma - 15)
+  expect(balancedVariation).toBeLessThan(originalVariation * 0.4)
 })
