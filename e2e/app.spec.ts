@@ -66,9 +66,9 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
       isBlob: source instanceof Blob,
       hasArrayBuffer: Boolean(
         source &&
-        typeof source === 'object' &&
-        'data' in source &&
-        (source as { data: unknown }).data instanceof ArrayBuffer,
+          typeof source === 'object' &&
+          'data' in source &&
+          (source as { data: unknown }).data instanceof ArrayBuffer,
       ),
     }
   })
@@ -76,6 +76,7 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await expect(page.getByText('调整扫描效果')).toBeVisible({ timeout: 120_000 })
   await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText(/检测到(?:轻微反光|明显过曝区域)/)).toHaveCount(0)
   const shadow = page.getByRole('button', { name: '标准去阴影', exact: true })
   const glare = page.getByRole('button', { name: '去反光', exact: true })
   const sharpen = page.getByRole('button', { name: '加锐', exact: true })

@@ -25,22 +25,13 @@ const buttonVariants = cva(
   },
 )
 
-interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean
 }
 
 function Button({ className, variant, size, asChild, ...props }: ButtonProps) {
   const Component = asChild ? Slot : 'button'
-  return (
-    <Component
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
-    />
-  )
+  return <Component data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />
 }
 
-// oxlint-disable-next-line react/only-export-components -- shadcn exposes variants for composition.
-export { Button, buttonVariants }
+export { Button }

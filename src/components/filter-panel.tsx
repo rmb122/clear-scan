@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, LockKeyhole, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -34,7 +34,6 @@ const effectGroups: EffectGroup[] = [
     options: [
       { value: 'none', label: '关闭' },
       { value: 'deshadow', label: '标准去阴影' },
-      { value: 'ai-deshadow', label: 'AI 去阴影' },
     ],
   },
   {
@@ -86,7 +85,6 @@ function adjustmentsEqual(left: EnhancementSettings, right: EnhancementSettings)
 function activeEffectLabels(effects: EnhancementEffects) {
   const labels: string[] = []
   if (effects.shadow === 'deshadow') labels.push('标准去阴影')
-  if (effects.shadow === 'ai-deshadow') labels.push('AI 去阴影')
   if (effects.glare === 'deglare') labels.push('去反光')
   if (effects.color === 'grayscale') labels.push('灰度')
   if (effects.color === 'black-white') labels.push('黑白')
@@ -103,8 +101,6 @@ export function FilterPanel({
   onPresetApply,
   onAdjustmentsChange,
   onRotate,
-  advancedReady = false,
-  onAdvancedRequired,
 }: {
   effects: EnhancementEffects
   adjustments: EnhancementSettings
@@ -113,10 +109,9 @@ export function FilterPanel({
   onPresetApply: (preset: QuickPreset) => void
   onAdjustmentsChange: (settings: EnhancementSettings) => void
   onRotate: () => void
-  advancedReady?: boolean
-  onAdvancedRequired?: () => void
 }) {
   const defaultAdjustments = adjustmentsEqual(adjustments, DEFAULT_ADJUSTMENTS)
+  const glareRepairEnabled = effects.glare === 'deglare'
   const activePreset =
     defaultAdjustments && effectsEqual(effects, ORIGINAL_EFFECTS)
       ? 'original'
@@ -132,7 +127,16 @@ export function FilterPanel({
   }> = [
     { key: 'brightness', label: '亮度', min: -40, max: 40 },
     { key: 'contrast', label: '对比度', min: -30, max: 40 },
-    ...(effects.shadow !== 'none' ? [{ key: 'shadowStrength' as const, label: '阴影强度', min: 0, max: 100 }] : []),
+    ...(effects.shadow !== 'none'
+      ? [
+          {
+            key: 'shadowStrength' as const,
+            label: '阴影强度',
+            min: 0,
+            max: 100,
+          },
+        ]
+      : []),
     ...(effects.detail === 'sharpen' ? [{ key: 'sharpness' as const, label: '锐化强度', min: 0, max: 100 }] : []),
   ]
 
@@ -144,6 +148,7 @@ export function FilterPanel({
     <div className="space-y-5">
       {glareLevel !== 'none' && (
         <div
+          role="status"
           className={cn(
             'rounded-2xl border p-3 text-xs leading-5',
             glareLevel === 'severe'
@@ -155,8 +160,12 @@ export function FilterPanel({
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
               {glareLevel === 'severe'
-                ? '检测到明显过曝区域。建议启用去反光；纯白区域的文字无法恢复时请换个角度重拍。'
-                : '检测到轻微反光，可以与阴影修复同时启用。'}
+                ? glareRepairEnabled
+                  ? '已启用去反光，正在压制可识别的高光；纯白区域的文字无法恢复时请换个角度重拍。'
+                  : '检测到明显过曝区域。建议启用去反光；纯白区域的文字无法恢复时请换个角度重拍。'
+                : glareRepairEnabled
+                  ? '已启用去反光，可与阴影修复同时使用。'
+                  : '检测到轻微反光，可以与阴影修复同时启用。'}
             </span>
           </div>
         </div>
@@ -172,8 +181,16 @@ export function FilterPanel({
         </div>
         <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted p-1.5">
           {[
-            { value: 'original' as const, label: '原版', description: '清除全部效果' },
-            { value: 'smart' as const, label: '智能增强', description: '净白＋去反光＋清晰文字' },
+            {
+              value: 'original' as const,
+              label: '原版',
+              description: '清除全部效果',
+            },
+            {
+              value: 'smart' as const,
+              label: '智能增强',
+              description: '净白＋去反光＋清晰文字',
+            },
           ].map((preset) => (
             <button
               key={preset.value}
@@ -221,14 +238,13 @@ export function FilterPanel({
               <div className={cn('mt-1 grid gap-1.5', group.options.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
                 {group.options.map((option) => {
                   const selected = effects[group.key] === option.value
-                  const locked = option.value === 'ai-deshadow' && !advancedReady
                   return (
                     <button
                       key={option.value}
                       type="button"
                       aria-label={option.label}
                       aria-pressed={selected}
-                      onClick={() => (locked ? onAdvancedRequired?.() : selectEffect(group.key, option.value))}
+                      onClick={() => selectEffect(group.key, option.value)}
                       className={cn(
                         'relative min-h-10 rounded-xl border px-2 py-2 text-xs font-semibold transition',
                         selected
@@ -236,7 +252,6 @@ export function FilterPanel({
                           : 'border-transparent bg-muted/70 text-muted-foreground hover:border-primary/20 hover:text-foreground',
                       )}
                     >
-                      {locked && <LockKeyhole className="absolute right-1.5 top-1.5 size-3 text-muted-foreground" />}
                       <span className="inline-flex items-center justify-center gap-1">
                         {selected && <Check className="size-3.5" />}
                         {option.label}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, FileArchive, FileImage, FileText, LoaderCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,6 @@ import { Progress } from '@/components/ui/progress'
 import type { ExportFormat, PdfLayout } from '@/lib/exporters'
 import type { ScanPage, ScanProject } from '@/lib/types'
 import { downloadBlob, cn } from '@/lib/utils'
-import { hasUsableAdvancedCorrection, prepareInstalledAdvancedModel } from '@/lib/advanced-model'
 
 export function ExportDialog({ project, pages }: { project: ScanProject; pages: ScanPage[] }) {
   const [open, setOpen] = useState(false)
@@ -62,14 +61,21 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
     },
   ]
 
+  useEffect(() => {
+    setFormat('pdf')
+    setLayout(project.mode === 'id-card' ? 'a4' : 'content')
+  }, [project.id, project.mode])
+
+  useEffect(() => {
+    if (project.mode !== 'id-card' && pages.length > 1 && (format === 'jpg' || format === 'png')) {
+      setFormat('pdf')
+    }
+  }, [format, pages.length, project.mode])
+
   const runExport = async () => {
     setExporting(true)
     setProgress(1)
     try {
-      if (pages.some((page) => page.effects.shadow === 'ai-deshadow' && !hasUsableAdvancedCorrection(page))) {
-        setLabel('正在启动高级去阴影')
-        await prepareInstalledAdvancedModel()
-      }
       const { exportProject } = await import('@/lib/exporters')
       const result = await exportProject(project, pages, format, layout, (value, nextLabel) => {
         setProgress(value)
@@ -79,7 +85,9 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
       toast.success('导出完成', { description: result.fileName })
       setOpen(false)
     } catch (reason) {
-      toast.error('导出失败', { description: reason instanceof Error ? reason.message : '请稍后重试' })
+      toast.error('导出失败', {
+        description: reason instanceof Error ? reason.message : '请稍后重试',
+      })
     } finally {
       setExporting(false)
       setProgress(0)
@@ -87,7 +95,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(nextOpen) => !exporting && setOpen(nextOpen)}>
       <DialogTrigger asChild>
         <Button disabled={!pages.length || !idComplete}>
           <Download />
@@ -107,6 +115,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
                 key={item.value}
                 type="button"
                 disabled={exporting}
+                aria-pressed={format === item.value}
                 onClick={() => setFormat(item.value)}
                 className={cn(
                   'flex items-center gap-3 rounded-2xl border p-3 text-left transition',
@@ -131,6 +140,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
             <div className="grid grid-cols-2 rounded-xl bg-muted p-1">
               <button
                 type="button"
+                aria-pressed={layout === 'content'}
                 onClick={() => setLayout('content')}
                 className={cn(
                   'h-9 rounded-lg text-xs font-semibold',
@@ -141,6 +151,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
               </button>
               <button
                 type="button"
+                aria-pressed={layout === 'a4'}
                 onClick={() => setLayout('a4')}
                 className={cn('h-9 rounded-lg text-xs font-semibold', layout === 'a4' && 'bg-background shadow-sm')}
               >

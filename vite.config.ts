@@ -65,17 +65,6 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
-        globIgnores: ['**/models/**', '**/ort-wasm*.wasm'],
-        runtimeCaching: [
-          {
-            urlPattern: /\/ort-wasm[^/]*\.wasm$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'clear-scan-ort-runtime',
-              expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-        ],
       },
     }),
   ],
@@ -83,9 +72,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
     },
-  },
-  optimizeDeps: {
-    include: ['onnxruntime-web/wasm', 'onnxruntime-web/webgpu'],
   },
   worker: {
     format: 'es',

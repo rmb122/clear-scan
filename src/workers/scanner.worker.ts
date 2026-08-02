@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 
 import type { CV, Mat } from '@techstark/opencv-js'
-import * as ortWasm from 'onnxruntime-web/wasm'
 import {
   calibrateDetectionConfidence,
   deduplicateCandidates,
@@ -16,8 +15,6 @@ import {
 } from '@/lib/document-detection'
 import { clamp, distance, orderPoints } from '@/lib/geometry'
 import type {
-  AdvancedCorrection,
-  AdvancedModelBackend,
   DetectionResult,
   EnhancementEffects,
   EnhancementSettings,
@@ -36,15 +33,6 @@ const workerScope = self as unknown as DedicatedWorkerGlobalScope & {
 }
 let cvReadyPromise: Promise<void> | undefined
 let cvRuntime: CV | undefined
-type OrtRuntime = typeof ortWasm
-let advancedSession: ortWasm.InferenceSession | undefined
-let advancedOrt: OrtRuntime | undefined
-let advancedBackend: AdvancedModelBackend | undefined
-let advancedInputSize: 256 | 384 | 512 = 256
-let advancedBenchmarkMs = 0
-
-const ADVANCED_MODEL_ID = 'docshadow-sd7k-fp16'
-const ADVANCED_MODEL_VERSION = '1.0.0-fp16'
 
 function post(message: ScannerWorkerResponse) {
   workerScope.postMessage(message)
@@ -643,37 +631,11 @@ function findDocumentQuad(
   }
 }
 
-function detectGlare(imageData: ImageData): GlareLevel {
-  const { data, width, height } = imageData
-  const step = Math.max(2, Math.round(Math.max(width, height) / 700))
-  let samples = 0
+function detectGlare(cv: CV, source: Mat): GlareLevel {
+  const highlight = recoverableHighlightMask(cv, source)
   let glare = 0
-
-  const lumaAt = (x: number, y: number) => {
-    const offset = (y * width + x) * 4
-    return data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114
-  }
-
-  for (let y = step * 3; y < height - step * 3; y += step) {
-    for (let x = step * 3; x < width - step * 3; x += step) {
-      const offset = (y * width + x) * 4
-      const red = data[offset]
-      const green = data[offset + 1]
-      const blue = data[offset + 2]
-      const light = red * 0.299 + green * 0.587 + blue * 0.114
-      const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
-      const neighbor = Math.min(
-        lumaAt(x - step * 3, y),
-        lumaAt(x + step * 3, y),
-        lumaAt(x, y - step * 3),
-        lumaAt(x, y + step * 3),
-      )
-      samples += 1
-      if (light > 246 && saturation < 24 && light - neighbor > 24) glare += 1
-    }
-  }
-
-  const ratio = glare / Math.max(1, samples)
+  for (const value of highlight.data) glare += value
+  const ratio = glare / Math.max(1, highlight.data.length)
   if (ratio > 0.012) return 'severe'
   if (ratio > 0.002) return 'mild'
   return 'none'
@@ -702,7 +664,7 @@ async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, pass
       height: sourceHeight,
       corners: accepted && detection.best ? detection.best.corners : fallback,
       confidence: detection.confidence,
-      glareLevel: detectGlare(imageData),
+      glareLevel: detectGlare(cv, source),
     }
     post({ id, type: 'progress', progress: 100, label: '边缘识别完成' })
     post({ id, type: 'detected', result })
@@ -746,7 +708,7 @@ function pixelLuma(red: number, green: number, blue: number) {
   return red * 0.299 + green * 0.587 + blue * 0.114
 }
 
-function exteriorHighlightMask(cv: CV, source: Mat) {
+function recoverableHighlightMask(cv: CV, source: Mat) {
   const analysis = new cv.Mat()
   try {
     const scale = Math.min(1, 640 / Math.max(source.cols, source.rows))
@@ -762,6 +724,8 @@ function exteriorHighlightMask(cv: CV, source: Mat) {
       const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
       candidate[pixel] = light >= 194 && saturation <= 86 ? 1 : 0
     }
+    // A bright page is normally connected to the crop boundary. Excluding that
+    // component prevents paper margins from being pulled toward nearby ink.
     const exterior = new Uint8Array(candidate.length)
     const queue = new Int32Array(candidate.length)
     let head = 0
@@ -788,8 +752,90 @@ function exteriorHighlightMask(cv: CV, source: Mat) {
       if (x + 1 < width) enqueue(pixel + 1)
       if (pixel >= width) enqueue(pixel - width)
       if (pixel + width < candidate.length) enqueue(pixel + width)
+      if (x > 0 && pixel >= width) enqueue(pixel - width - 1)
+      if (x + 1 < width && pixel >= width) enqueue(pixel - width + 1)
+      if (x > 0 && pixel + width < candidate.length) enqueue(pixel + width - 1)
+      if (x + 1 < width && pixel + width < candidate.length) enqueue(pixel + width + 1)
     }
-    return { data: exterior, width, height }
+
+    // Only broad, graduated highlight blobs are recoverable glare. Connected
+    // component geometry and tone spread protect legitimate white text, logos,
+    // barcodes and solid design elements inside coloured regions.
+    const recoverable = new Uint8Array(candidate.length)
+    const minimumArea = Math.max(32, Math.round(candidate.length * 0.00025))
+    const maximumArea = Math.round(candidate.length * 0.12)
+    const minimumSpan = Math.max(6, Math.round(Math.min(width, height) * 0.018))
+    for (let start = 0; start < candidate.length; start += 1) {
+      if (!candidate[start] || exterior[start]) continue
+      head = 0
+      tail = 0
+      candidate[start] = 0
+      queue[tail] = start
+      tail += 1
+      let minX = width
+      let maxX = 0
+      let minY = height
+      let maxY = 0
+      let sum = 0
+      let sumSquares = 0
+      let minimumLight = 255
+      let maximumLight = 0
+      let shoulderPixels = 0
+
+      const enqueueComponent = (pixel: number) => {
+        if (!candidate[pixel] || exterior[pixel]) return
+        candidate[pixel] = 0
+        queue[tail] = pixel
+        tail += 1
+      }
+      while (head < tail) {
+        const pixel = queue[head]
+        head += 1
+        const x = pixel % width
+        const y = Math.floor(pixel / width)
+        const index = pixel * 4
+        const light = pixelLuma(analysis.data[index], analysis.data[index + 1], analysis.data[index + 2])
+        minX = Math.min(minX, x)
+        maxX = Math.max(maxX, x)
+        minY = Math.min(minY, y)
+        maxY = Math.max(maxY, y)
+        sum += light
+        sumSquares += light * light
+        minimumLight = Math.min(minimumLight, light)
+        maximumLight = Math.max(maximumLight, light)
+        if (light >= 202 && light <= 240) shoulderPixels += 1
+
+        if (x > 0) enqueueComponent(pixel - 1)
+        if (x + 1 < width) enqueueComponent(pixel + 1)
+        if (pixel >= width) enqueueComponent(pixel - width)
+        if (pixel + width < candidate.length) enqueueComponent(pixel + width)
+        if (x > 0 && pixel >= width) enqueueComponent(pixel - width - 1)
+        if (x + 1 < width && pixel >= width) enqueueComponent(pixel - width + 1)
+        if (x > 0 && pixel + width < candidate.length) enqueueComponent(pixel + width - 1)
+        if (x + 1 < width && pixel + width < candidate.length) enqueueComponent(pixel + width + 1)
+      }
+
+      const area = tail
+      const boxWidth = maxX - minX + 1
+      const boxHeight = maxY - minY + 1
+      const aspectRatio = Math.max(boxWidth / boxHeight, boxHeight / boxWidth)
+      const fillRatio = area / (boxWidth * boxHeight)
+      const average = sum / area
+      const deviation = Math.sqrt(Math.max(0, sumSquares / area - average * average))
+      const isGraduatedBlob =
+        area >= minimumArea &&
+        area <= maximumArea &&
+        Math.min(boxWidth, boxHeight) >= minimumSpan &&
+        aspectRatio <= 12 &&
+        fillRatio >= 0.2 &&
+        maximumLight >= 245 &&
+        maximumLight - minimumLight >= 28 &&
+        deviation >= 7 &&
+        shoulderPixels / area >= 0.18
+      if (!isGraduatedBlob) continue
+      for (let index = 0; index < tail; index += 1) recoverable[queue[index]] = 1
+    }
+    return { data: recoverable, width, height }
   } finally {
     analysis.delete()
   }
@@ -802,13 +848,13 @@ function applyGlareReduction(cv: CV, source: Mat) {
     // estimate lets us reconstruct both luminance and local paper/ink chroma.
     const kernelSize = scaledOdd(Math.min(source.cols, source.rows) / 5, 61, 201)
     cv.GaussianBlur(source, background, new cv.Size(kernelSize, kernelSize), 0)
-    const exterior = exteriorHighlightMask(cv, source)
+    const highlight = recoverableHighlightMask(cv, source)
     const pixels = source.data
     for (let y = 0; y < source.rows; y += 1) {
-      const maskY = Math.min(exterior.height - 1, Math.floor((y * exterior.height) / source.rows))
+      const maskY = Math.min(highlight.height - 1, Math.floor((y * highlight.height) / source.rows))
       for (let x = 0; x < source.cols; x += 1) {
-        const maskX = Math.min(exterior.width - 1, Math.floor((x * exterior.width) / source.cols))
-        if (exterior.data[maskY * exterior.width + maskX]) continue
+        const maskX = Math.min(highlight.width - 1, Math.floor((x * highlight.width) / source.cols))
+        if (!highlight.data[maskY * highlight.width + maskX]) continue
         const index = (y * source.cols + x) * 4
         const red = pixels[index]
         const green = pixels[index + 1]
@@ -890,7 +936,12 @@ function estimatePaperWhitePoint(data: Uint8Array) {
     samples += 1
   }
   if (!samples) return { red: upper, green: upper, blue: upper, luma: upper }
-  const result = { red: red / samples, green: green / samples, blue: blue / samples, luma: 0 }
+  const result = {
+    red: red / samples,
+    green: green / samples,
+    blue: blue / samples,
+    luma: 0,
+  }
   result.luma = pixelLuma(result.red, result.green, result.blue)
   return result
 }
@@ -1128,185 +1179,6 @@ function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjust
   }
 }
 
-const floatView = new Float32Array(1)
-const intView = new Uint32Array(floatView.buffer)
-
-function floatToHalf(value: number) {
-  floatView[0] = value
-  const bits = intView[0]
-  const sign = (bits >>> 16) & 0x8000
-  const exponent = ((bits >>> 23) & 0xff) - 127 + 15
-  const mantissa = bits & 0x7fffff
-  if (exponent <= 0) {
-    if (exponent < -10) return sign
-    return sign | ((mantissa | 0x800000) >> (14 - exponent))
-  }
-  if (exponent >= 31) return sign | 0x7c00
-  return sign | (exponent << 10) | (mantissa >> 13)
-}
-
-function halfToFloat(value: number) {
-  const sign = value & 0x8000 ? -1 : 1
-  const exponent = (value >> 10) & 0x1f
-  const fraction = value & 0x03ff
-  if (exponent === 0) return sign * 2 ** -14 * (fraction / 1024)
-  if (exponent === 31) return fraction ? Number.NaN : sign * Number.POSITIVE_INFINITY
-  return sign * 2 ** (exponent - 15) * (1 + fraction / 1024)
-}
-
-async function runAdvancedTensor(input: Uint16Array, width: number, height: number) {
-  if (!advancedSession || !advancedOrt) throw new Error('高级去阴影模型尚未启动')
-  const tensor = new advancedOrt.Tensor('float16', input, [1, 3, height, width])
-  try {
-    const result = await advancedSession.run({
-      [advancedSession.inputNames[0]]: tensor,
-    })
-    const output = result[advancedSession.outputNames[0]]
-    const values = new Float32Array(width * height * 3)
-    const data = output.data
-    const typed = data as unknown as {
-      buffer: ArrayBufferLike
-      byteOffset: number
-      byteLength: number
-      BYTES_PER_ELEMENT?: number
-    }
-    if (ArrayBuffer.isView(data) && typed.BYTES_PER_ELEMENT === 2) {
-      // New Chromium builds expose float16 tensors as Float16Array while older
-      // ONNX Runtime builds used Uint16Array. Reading the bits supports both.
-      const halves = new Uint16Array(typed.buffer, typed.byteOffset, typed.byteLength / 2)
-      for (let index = 0; index < values.length; index += 1) values[index] = halfToFloat(halves[index])
-    } else if (data instanceof Float32Array) {
-      values.set(data)
-    } else {
-      throw new Error('高级模型返回了不支持的数据格式')
-    }
-    output.dispose()
-    return values
-  } finally {
-    tensor.dispose()
-  }
-}
-
-function boxBlur(values: Float32Array, width: number, height: number, radius: number) {
-  if (radius <= 0) return values.slice()
-  const horizontal = new Float32Array(values.length)
-  const output = new Float32Array(values.length)
-  for (let y = 0; y < height; y += 1) {
-    let sum = 0
-    for (let x = -radius; x <= radius; x += 1) sum += values[y * width + clamp(x, 0, width - 1)]
-    for (let x = 0; x < width; x += 1) {
-      horizontal[y * width + x] = sum / (radius * 2 + 1)
-      sum += values[y * width + clamp(x + radius + 1, 0, width - 1)]
-      sum -= values[y * width + clamp(x - radius, 0, width - 1)]
-    }
-  }
-  for (let x = 0; x < width; x += 1) {
-    let sum = 0
-    for (let y = -radius; y <= radius; y += 1) sum += horizontal[clamp(y, 0, height - 1) * width + x]
-    for (let y = 0; y < height; y += 1) {
-      output[y * width + x] = sum / (radius * 2 + 1)
-      sum += horizontal[clamp(y + radius + 1, 0, height - 1) * width + x]
-      sum -= horizontal[clamp(y - radius, 0, height - 1) * width + x]
-    }
-  }
-  return output
-}
-
-function correctionFingerprint(page: ScanPage) {
-  const corners = page.corners.map((point) => `${point.x.toFixed(5)},${point.y.toFixed(5)}`).join(';')
-  return `v1:${page.id}:${page.sourceName}:${page.source.size}:${page.rotation}:${corners}`
-}
-
-async function createAdvancedCorrection(page: ScanPage, source: Mat): Promise<AdvancedCorrection> {
-  if (!advancedSession || !advancedBackend) throw new Error('请先在设置中安装并启动高级去阴影模型')
-  const scale = advancedInputSize / Math.max(source.cols, source.rows)
-  const width = Math.max(64, Math.ceil((source.cols * scale) / 16) * 16)
-  const height = Math.max(64, Math.ceil((source.rows * scale) / 16) * 16)
-  const sourceCanvas = new OffscreenCanvas(source.cols, source.rows)
-  const sourceContext = sourceCanvas.getContext('2d')
-  const modelCanvas = new OffscreenCanvas(width, height)
-  const modelContext = modelCanvas.getContext('2d', {
-    willReadFrequently: true,
-  })
-  if (!sourceContext || !modelContext) throw new Error('无法准备高级去阴影输入')
-  sourceContext.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.cols, source.rows), 0, 0)
-  modelContext.drawImage(sourceCanvas, 0, 0, width, height)
-  const pixels = modelContext.getImageData(0, 0, width, height).data
-  const plane = width * height
-  const input = new Uint16Array(plane * 3)
-  for (let pixel = 0, offset = 0; pixel < plane; pixel += 1, offset += 4) {
-    input[pixel] = floatToHalf(pixels[offset] / 255)
-    input[plane + pixel] = floatToHalf(pixels[offset + 1] / 255)
-    input[plane * 2 + pixel] = floatToHalf(pixels[offset + 2] / 255)
-  }
-  const started = performance.now()
-  const prediction = await runAdvancedTensor(input, width, height)
-  const inferenceMs = performance.now() - started
-  const logs = [new Float32Array(plane), new Float32Array(plane), new Float32Array(plane)]
-  for (let pixel = 0, offset = 0; pixel < plane; pixel += 1, offset += 4) {
-    const originalLuma = (pixels[offset] * 0.299 + pixels[offset + 1] * 0.587 + pixels[offset + 2] * 0.114) / 255
-    const predictedLuma = clamp(
-      prediction[pixel] * 0.299 + prediction[plane + pixel] * 0.587 + prediction[plane * 2 + pixel] * 0.114,
-      0,
-      1,
-    )
-    const lumaLog = Math.log2(clamp(predictedLuma / Math.max(0.07, originalLuma), 0.5, 2.25))
-    for (let channel = 0; channel < 3; channel += 1) {
-      const original = pixels[offset + channel] / 255
-      const predicted = clamp(prediction[channel * plane + pixel], 0, 1)
-      const channelLog = Math.log2(clamp(predicted / Math.max(0.07, original), 0.5, 2.25))
-      logs[channel][pixel] = lumaLog * 0.72 + channelLog * 0.28
-    }
-  }
-  const radius = Math.max(2, Math.round(Math.min(width, height) / 48))
-  const smoothed = logs.map((values) => boxBlur(values, width, height, radius))
-  const mapCanvas = new OffscreenCanvas(width, height)
-  const mapContext = mapCanvas.getContext('2d')
-  if (!mapContext) throw new Error('无法生成高级去阴影校正图')
-  const mapPixels = new Uint8ClampedArray(plane * 4)
-  for (let pixel = 0, offset = 0; pixel < plane; pixel += 1, offset += 4) {
-    mapPixels[offset] = clamp(128 + smoothed[0][pixel] * 96, 0, 255)
-    mapPixels[offset + 1] = clamp(128 + smoothed[1][pixel] * 96, 0, 255)
-    mapPixels[offset + 2] = clamp(128 + smoothed[2][pixel] * 96, 0, 255)
-    mapPixels[offset + 3] = 255
-  }
-  mapContext.putImageData(new ImageData(mapPixels, width, height), 0, 0)
-  const map = await mapCanvas.convertToBlob({ type: 'image/png' })
-  return {
-    fingerprint: correctionFingerprint(page),
-    modelId: ADVANCED_MODEL_ID,
-    modelVersion: ADVANCED_MODEL_VERSION,
-    map,
-    width,
-    height,
-    backend: advancedBackend,
-    inferenceMs,
-    createdAt: Date.now(),
-  }
-}
-
-async function applyAdvancedCorrection(source: Mat, correction: AdvancedCorrection, shadowStrength: number) {
-  const bitmap = await createImageBitmap(correction.map)
-  const canvas = new OffscreenCanvas(source.cols, source.rows)
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) {
-    bitmap.close()
-    throw new Error('无法读取高级去阴影校正图')
-  }
-  context.imageSmoothingEnabled = true
-  context.imageSmoothingQuality = 'high'
-  context.drawImage(bitmap, 0, 0, source.cols, source.rows)
-  bitmap.close()
-  const gains = context.getImageData(0, 0, source.cols, source.rows).data
-  const blend = 0.45 + (clamp(shadowStrength, 0, 100) / 100) * 0.55
-  for (let offset = 0; offset < source.data.length; offset += 4) {
-    for (let channel = 0; channel < 3; channel += 1) {
-      const gain = 2 ** ((gains[offset + channel] - 128) / 96)
-      source.data[offset + channel] = clamp(source.data[offset + channel] * (1 + (gain - 1) * blend), 0, 255)
-    }
-  }
-}
-
 async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType: string, quality = 0.92) {
   post({ id, type: 'progress', progress: 10, label: '正在读取原图' })
   await ensureOpenCv(id)
@@ -1348,7 +1220,6 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
   const warped = new cv.Mat()
   let rotated: Mat | undefined
   let filtered: Mat | undefined
-  let correction: AdvancedCorrection | undefined
 
   try {
     post({ id, type: 'progress', progress: 42, label: '正在校正透视' })
@@ -1362,13 +1233,6 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
     )
     rotated = rotateMat(cv, warped, page.rotation)
     post({ id, type: 'progress', progress: 68, label: '正在应用增强效果' })
-    if (page.effects.shadow === 'ai-deshadow') {
-      correction =
-        page.advancedCorrection?.fingerprint === correctionFingerprint(page)
-          ? page.advancedCorrection
-          : await createAdvancedCorrection(page, rotated)
-      await applyAdvancedCorrection(rotated, correction, page.adjustments.shadowStrength ?? 50)
-    }
     filtered = processEffects(cv, rotated, page.effects, page.adjustments)
     const canvas = new OffscreenCanvas(filtered.cols, filtered.rows)
     const context = canvas.getContext('2d')
@@ -1383,7 +1247,6 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
       blob,
       width: filtered.cols,
       height: filtered.rows,
-      correction,
     })
   } finally {
     source.delete()
@@ -1396,142 +1259,12 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
   }
 }
 
-async function releaseAdvancedModel(id?: string) {
-  await advancedSession?.release()
-  advancedSession = undefined
-  advancedOrt = undefined
-  advancedBackend = undefined
-  advancedBenchmarkMs = 0
-  advancedInputSize = 256
-  if (id) post({ id, type: 'model-released' })
-}
-
-async function prepareAdvancedModel(id: string, model: ArrayBuffer, preferWebGpu: boolean) {
-  await releaseAdvancedModel()
-  post({ id, type: 'progress', progress: 18, label: '正在选择本地推理后端' })
-
-  const configureWasm = (ort: OrtRuntime) => {
-    ort.env.wasm.numThreads = workerScope.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1
-    ort.env.wasm.proxy = false
-  }
-
-  const gpu = (
-    navigator as Navigator & {
-      gpu?: {
-        requestAdapter: (options?: { powerPreference?: 'high-performance' }) => Promise<{
-          isFallbackAdapter?: boolean
-          info?: { isFallbackAdapter?: boolean }
-        } | null>
-      }
-    }
-  ).gpu
-  const adapter =
-    preferWebGpu && workerScope.isSecureContext && gpu
-      ? await gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null)
-      : null
-  const adapterInfo = adapter as {
-    isFallbackAdapter?: boolean
-    info?: { isFallbackAdapter?: boolean }
-  } | null
-  const canUseWebGpu = Boolean(adapterInfo && !adapterInfo.isFallbackAdapter && !adapterInfo.info?.isFallbackAdapter)
-  let lastError: unknown
-  if (canUseWebGpu) {
-    try {
-      post({
-        id,
-        type: 'progress',
-        progress: 26,
-        label: '正在初始化 WebGPU 推理',
-      })
-      const ort = await import('onnxruntime-web/webgpu')
-      configureWasm(ort)
-      advancedSession = await ort.InferenceSession.create(model, {
-        executionProviders: ['webgpu'],
-        graphOptimizationLevel: 'all',
-      })
-      advancedOrt = ort
-      advancedBackend = 'webgpu'
-    } catch (error) {
-      lastError = error
-      await advancedSession?.release()
-      advancedSession = undefined
-    }
-  }
-  if (!advancedSession) {
-    try {
-      post({
-        id,
-        type: 'progress',
-        progress: 34,
-        label: '正在初始化 WebAssembly 推理',
-      })
-      configureWasm(ortWasm)
-      advancedSession = await ortWasm.InferenceSession.create(model, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      })
-      advancedOrt = ortWasm
-      advancedBackend = 'wasm'
-    } catch (error) {
-      await releaseAdvancedModel()
-      const detail = error instanceof Error ? error.message : String(error)
-      const fallbackDetail = lastError
-        ? `；WebGPU 回退原因：${lastError instanceof Error ? lastError.message : String(lastError)}`
-        : ''
-      throw new Error(`高级去阴影模型无法启动（WebAssembly Runtime）：${detail}${fallbackDetail}`)
-    }
-  }
-
-  post({ id, type: 'progress', progress: 72, label: '正在自检并测速' })
-  const size = 256
-  const input = new Uint16Array(size * size * 3)
-  const white = floatToHalf(0.82)
-  input.fill(white)
-  const started = performance.now()
-  let output: Float32Array
-  try {
-    output = await runAdvancedTensor(input, size, size)
-  } catch (error) {
-    await releaseAdvancedModel()
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`高级去阴影模型自检失败：${detail}`)
-  }
-  advancedBenchmarkMs = performance.now() - started
-  if (!Number.isFinite(output[Math.floor(output.length / 2)])) {
-    await releaseAdvancedModel()
-    throw new Error('高级模型自检未通过')
-  }
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4
-  advancedInputSize =
-    advancedBackend === 'webgpu' || advancedBenchmarkMs <= 700 ? 512 : advancedBenchmarkMs <= 1_500 ? 384 : 256
-  if (memory <= 2) advancedInputSize = 256
-  else if (memory <= 4 && advancedInputSize === 512) advancedInputSize = 384
-  post({ id, type: 'progress', progress: 100, label: '高级去阴影已就绪' })
-  post({
-    id,
-    type: 'model-ready',
-    backend: advancedBackend ?? 'wasm',
-    benchmarkMs: advancedBenchmarkMs,
-    inputSize: advancedInputSize,
-  })
-}
-
 workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerRequest>) => {
   const request = event.data
   const task =
     request.type === 'detect'
       ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
-      : request.type === 'render'
-        ? renderPage(
-            request.id,
-            request.page,
-            request.options.maxEdge,
-            request.options.mimeType,
-            request.options.quality,
-          )
-        : request.type === 'prepare-model'
-          ? prepareAdvancedModel(request.id, request.model, request.preferWebGpu)
-          : releaseAdvancedModel(request.id)
+      : renderPage(request.id, request.page, request.options.maxEdge, request.options.mimeType, request.options.quality)
 
   void task.catch((error: unknown) => {
     const message = error instanceof Error ? error.message : '本地图像处理失败'

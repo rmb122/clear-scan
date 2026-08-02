@@ -21,7 +21,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { bulkPutPages, db, getProjectWithPages, putPage } from '@/lib/db'
-import { hasUsableAdvancedCorrection, prepareInstalledAdvancedModel } from '@/lib/advanced-model'
 import { DETECTION_CONFIDENCE_THRESHOLD } from '@/lib/document-detection'
 import { DEFAULT_QUAD } from '@/lib/geometry'
 import { scannerClient } from '@/lib/scanner-client'
@@ -49,7 +48,9 @@ function isScanMode(value?: string): value is ScanMode {
 }
 
 async function fallbackDetection(source: Blob): Promise<DetectionResult> {
-  const bitmap = await createImageBitmap(source, { imageOrientation: 'from-image' })
+  const bitmap = await createImageBitmap(source, {
+    imageOrientation: 'from-image',
+  })
   const result: DetectionResult = {
     width: bitmap.width,
     height: bitmap.height,
@@ -66,7 +67,7 @@ export function ScanPage() {
   const navigate = useNavigate()
   const loadedProjectId = useRef<string | undefined>(undefined)
   const previewUrlRef = useRef<string | undefined>(undefined)
-  const shadowEffectRequest = useRef(0)
+  const workspaceRef = useRef<HTMLElement | null>(null)
   const [project, setProject] = useState<ScanProject>()
   const [pages, setPages] = useState<ScanPageModel[]>([])
   const [active, setActive] = useState<ScanPageModel>()
@@ -77,15 +78,48 @@ export function ScanPage() {
   const [sourceUrl, setSourceUrl] = useState<string>()
   const [previewUrl, setPreviewUrl] = useState<string>()
   const [previewBlob, setPreviewBlob] = useState<Blob>()
+  const activeRef = useRef<ScanPageModel | undefined>(undefined)
+  const projectRef = useRef<ScanProject | undefined>(undefined)
   const engineProgress = useAppStore((state) => state.engineProgress)
   const engineLabel = useAppStore((state) => state.engineLabel)
-  const modelState = useAppStore((state) => state.modelState)
   const activeSource = active?.source
+  const activePageId = active?.id
 
   const mode: ScanMode = project?.mode ?? (isScanMode(routeMode) ? routeMode : 'document')
   const sortedPages = useMemo(() => [...pages].sort((a, b) => a.order - b.order), [pages])
+  const effectivePages = useMemo(
+    () => sortedPages.map((page) => (page.id === active?.id ? active : page)),
+    [active, sortedPages],
+  )
   const nextRole: PageRole =
     mode === 'id-card' ? (pages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
+
+  useEffect(() => {
+    activeRef.current = active
+    projectRef.current = project
+  }, [active, project])
+
+  useEffect(
+    () => () => {
+      const latestPage = activeRef.current
+      const latestProject = projectRef.current
+      if (!latestPage || !latestProject) return
+      const updatedAt = Date.now()
+      void Promise.all([
+        putPage({ ...latestPage, updatedAt }),
+        db.projects.update(latestProject.id, { updatedAt }),
+      ]).catch(() => undefined)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (stage === 'capture' || !activePageId || window.matchMedia('(min-width: 1024px)').matches) return
+    const frame = window.requestAnimationFrame(() => {
+      workspaceRef.current?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [activePageId, stage])
 
   useEffect(() => {
     if (projectId) {
@@ -148,25 +182,15 @@ export function ScanPage() {
       setRendering(true)
       void scannerClient
         .render(active, { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 })
-        .then(({ blob, correction }) => {
+        .then(({ blob }) => {
           if (cancelled) return
           replacePreview(URL.createObjectURL(blob), blob)
-          if (correction && active.advancedCorrection?.fingerprint !== correction.fingerprint) {
-            setActive((current) =>
-              current?.id === active.id
-                ? { ...current, advancedCorrection: correction, updatedAt: Date.now() }
-                : current,
-            )
-            setPages((current) =>
-              current.map((page) =>
-                page.id === active.id ? { ...page, advancedCorrection: correction, updatedAt: Date.now() } : page,
-              ),
-            )
-          }
         })
         .catch((reason: unknown) => {
           if (!cancelled)
-            toast.error('预览生成失败', { description: reason instanceof Error ? reason.message : '请重试' })
+            toast.error('预览生成失败', {
+              description: reason instanceof Error ? reason.message : '请重试',
+            })
         })
         .finally(() => !cancelled && setRendering(false))
     }, 220)
@@ -249,7 +273,11 @@ export function ScanPage() {
           updatedAt: now,
         }
         try {
-          const thumbnail = await scannerClient.render(page, { maxEdge: 560, mimeType: 'image/jpeg', quality: 0.76 })
+          const thumbnail = await scannerClient.render(page, {
+            maxEdge: 560,
+            mimeType: 'image/jpeg',
+            quality: 0.76,
+          })
           page = { ...page, thumbnail: thumbnail.blob }
         } catch {
           page = { ...page, thumbnail: file }
@@ -258,7 +286,10 @@ export function ScanPage() {
         added.push(page)
         await putPage(page)
       }
-      await db.projects.update(currentProject.id, { updatedAt: Date.now(), passportLayout })
+      await db.projects.update(currentProject.id, {
+        updatedAt: Date.now(),
+        passportLayout,
+      })
       setPages(workingPages)
       if (added[0]) {
         replacePreview(undefined, undefined)
@@ -266,7 +297,9 @@ export function ScanPage() {
         setStage('crop')
       }
     } catch (reason) {
-      toast.error('无法添加照片', { description: reason instanceof Error ? reason.message : '请换一张图片重试' })
+      toast.error('无法添加照片', {
+        description: reason instanceof Error ? reason.message : '请换一张图片重试',
+      })
     } finally {
       setBusy(false)
     }
@@ -274,10 +307,14 @@ export function ScanPage() {
 
   const saveActive = async () => {
     if (!active || !project) return
-    const saved = { ...active, thumbnail: previewBlob ?? active.thumbnail, updatedAt: Date.now() }
+    const saved = {
+      ...active,
+      thumbnail: previewBlob ?? active.thumbnail,
+      updatedAt: Date.now(),
+    }
     await putPage(saved)
     await db.projects.update(project.id, { updatedAt: Date.now() })
-    const nextPages = pages.map((page) => (page.id === saved.id ? saved : page))
+    const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
     setPages(nextPages)
     setActive(saved)
     toast.success('页面已保存到本地')
@@ -292,7 +329,11 @@ export function ScanPage() {
   const setPassportLayout = async (layout: PassportLayout) => {
     setPassportLayoutState(layout)
     if (project) {
-      const updated = { ...project, passportLayout: layout, updatedAt: Date.now() }
+      const updated = {
+        ...project,
+        passportLayout: layout,
+        updatedAt: Date.now(),
+      }
       setProject(updated)
       await db.projects.put(updated)
     }
@@ -313,7 +354,7 @@ export function ScanPage() {
     )
       return
     await db.pages.delete(page.id)
-    const remaining = pages
+    const remaining = effectivePages
       .filter((item) => item.id !== page.id)
       .sort((a, b) => a.order - b.order)
       .map((item, index) => ({ ...item, order: index }))
@@ -327,12 +368,16 @@ export function ScanPage() {
   }
 
   const movePage = async (page: ScanPageModel, direction: -1 | 1) => {
-    const ordered = [...sortedPages]
+    const ordered = [...effectivePages]
     const index = ordered.findIndex((item) => item.id === page.id)
     const target = index + direction
     if (target < 0 || target >= ordered.length) return
     ;[ordered[index], ordered[target]] = [ordered[target], ordered[index]]
-    const reordered = ordered.map((item, order) => ({ ...item, order, updatedAt: Date.now() }))
+    const reordered = ordered.map((item, order) => ({
+      ...item,
+      order,
+      updatedAt: Date.now(),
+    }))
     await bulkPutPages(reordered)
     setPages(reordered)
     setActive((current) => (current ? reordered.find((item) => item.id === current.id) : current))
@@ -343,55 +388,57 @@ export function ScanPage() {
     setBusy(true)
     try {
       const detection = await scannerClient.detect(active.source, mode, passportLayout)
-      setActive({ ...active, ...detection, advancedCorrection: undefined, updatedAt: Date.now() })
+      setActive({ ...active, ...detection, updatedAt: Date.now() })
       toast.success('已重新识别边缘')
     } catch (reason) {
-      toast.error('重新识别失败', { description: reason instanceof Error ? reason.message : '请手动调整四角' })
+      toast.error('重新识别失败', {
+        description: reason instanceof Error ? reason.message : '请手动调整四角',
+      })
     } finally {
       setBusy(false)
     }
   }
 
+  const flushActivePage = () => {
+    if (!active) return effectivePages
+    const saved = { ...active, updatedAt: Date.now() }
+    const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
+    setPages(nextPages)
+    void putPage(saved)
+      .then(() => (project ? db.projects.update(project.id, { updatedAt: saved.updatedAt }) : undefined))
+      .catch((reason: unknown) => {
+        toast.error('页面保存失败', {
+          id: 'scan-flush-error',
+          description: reason instanceof Error ? reason.message : '浏览器无法写入本地存储',
+        })
+      })
+    return nextPages
+  }
+
   const selectPage = (page: ScanPageModel) => {
+    const nextPages = flushActivePage()
     replacePreview(undefined, undefined)
-    setActive(page)
+    setActive(nextPages.find((item) => item.id === page.id) ?? page)
     setStage('enhance')
   }
 
-  const changeEffect = async (category: keyof EnhancementEffects, effect: EnhancementEffect) => {
+  const startCapture = () => {
+    flushActivePage()
+    setActive(undefined)
+    replacePreview(undefined, undefined)
+    setStage('capture')
+  }
+
+  const changeEffect = (category: keyof EnhancementEffects, effect: EnhancementEffect) => {
     if (!active) return
-    const request = category === 'shadow' ? ++shadowEffectRequest.current : shadowEffectRequest.current
-    if (
-      category === 'shadow' &&
-      effect === 'ai-deshadow' &&
-      active.effects.shadow !== 'ai-deshadow' &&
-      !hasUsableAdvancedCorrection(active)
-    ) {
-      if (modelState !== 'ready') {
-        toast('需要安装高级去阴影模型', {
-          description: '标准“去阴影”无需安装，也可以直接使用。',
-        })
-        navigate('/settings')
-        return
-      }
-      setRendering(true)
-      try {
-        await prepareInstalledAdvancedModel()
-      } catch (reason) {
-        toast.error('高级模型启动失败', {
-          description: reason instanceof Error ? reason.message : '请前往设置重试',
-        })
-        return
-      } finally {
-        setRendering(false)
-      }
-    }
-    if (category === 'shadow' && request !== shadowEffectRequest.current) return
     setActive((current) =>
       current?.id === active.id
         ? {
             ...current,
-            effects: { ...current.effects, [category]: effect } as EnhancementEffects,
+            effects: {
+              ...current.effects,
+              [category]: effect,
+            } as EnhancementEffects,
             updatedAt: Date.now(),
           }
         : current,
@@ -400,18 +447,19 @@ export function ScanPage() {
 
   const applyEffectPreset = (preset: 'original' | 'smart') => {
     if (!active) return
-    shadowEffectRequest.current += 1
     setActive({
       ...active,
-      effects: { ...(preset === 'original' ? ORIGINAL_EFFECTS : SMART_EFFECTS) },
+      effects: {
+        ...(preset === 'original' ? ORIGINAL_EFFECTS : SMART_EFFECTS),
+      },
       adjustments: { ...DEFAULT_ADJUSTMENTS },
       updatedAt: Date.now(),
     })
   }
 
   return (
-    <div className="min-h-[calc(100svh-4rem)] bg-background">
-      <div className="border-b border-border/80 bg-card">
+    <div className="min-h-[calc(100svh-4rem)] bg-background lg:flex lg:h-[calc(100dvh-4rem)] lg:min-h-0 lg:flex-col">
+      <div className="border-b border-border/80 bg-card lg:shrink-0">
         <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -421,13 +469,13 @@ export function ScanPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{MODE_LABELS[mode]}</Badge>
-                  <span className="text-[10px] font-semibold text-muted-foreground">{pages.length} 页</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground">{effectivePages.length} 页</span>
                 </div>
                 {project ? (
                   <input
                     value={project.name}
                     onChange={(event) => renameProject(event.target.value)}
-                    className="mt-1 h-6 max-w-[15rem] truncate bg-transparent text-sm font-bold outline-none focus:text-primary sm:max-w-md"
+                    className="-ml-2 mt-1 h-9 max-w-[15rem] truncate rounded-lg bg-transparent px-2 text-sm font-bold outline-none transition focus:bg-muted focus:text-primary sm:max-w-md"
                     aria-label="项目名称"
                   />
                 ) : (
@@ -435,12 +483,14 @@ export function ScanPage() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">{project && <ExportDialog project={project} pages={pages} />}</div>
+            <div className="flex items-center gap-2">
+              {project && <ExportDialog project={project} pages={effectivePages} />}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="border-b border-border/80 bg-background">
+      <div className="border-b border-border/80 bg-background lg:shrink-0">
         <div className="mx-auto max-w-[1480px] px-4 py-2.5 sm:px-6">
           <div className="mx-auto flex max-w-xl items-center justify-between text-[10px] font-semibold text-muted-foreground">
             {[
@@ -467,33 +517,27 @@ export function ScanPage() {
         </div>
       </div>
 
-      <div className="bg-card">
-        <div className="mx-auto max-w-[1480px] lg:grid lg:grid-cols-[132px_minmax(0,1fr)_340px]">
-          <aside className="hidden border-r border-border bg-card lg:block lg:h-[calc(100svh-9.55rem)]">
+      <div className="bg-card lg:min-h-0 lg:flex-1">
+        <div className="mx-auto max-w-[1480px] lg:grid lg:h-full lg:grid-cols-[132px_minmax(0,1fr)_340px]">
+          <aside className="hidden border-r border-border bg-card lg:block lg:h-full">
             <PageRail
               mode={mode}
-              pages={pages}
+              pages={effectivePages}
               activeId={active?.id}
               onSelect={selectPage}
-              onAdd={() => {
-                setActive(undefined)
-                setStage('capture')
-              }}
+              onAdd={startCapture}
               onDelete={(page) => void deletePage(page)}
               onMove={(page, direction) => void movePage(page, direction)}
             />
           </aside>
-          {pages.length > 0 && (
+          {effectivePages.length > 0 && (
             <div className="border-b border-border bg-card lg:hidden">
               <PageRail
                 mode={mode}
-                pages={pages}
+                pages={effectivePages}
                 activeId={active?.id}
                 onSelect={selectPage}
-                onAdd={() => {
-                  setActive(undefined)
-                  setStage('capture')
-                }}
+                onAdd={startCapture}
                 onDelete={(page) => void deletePage(page)}
                 onMove={(page, direction) => void movePage(page, direction)}
               />
@@ -501,7 +545,7 @@ export function ScanPage() {
           )}
 
           {stage === 'capture' ? (
-            <div className="lg:col-span-2 lg:min-h-[calc(100svh-9.55rem)]">
+            <div className="lg:col-span-2 lg:min-h-0 lg:overflow-y-auto">
               <CapturePanel
                 mode={mode}
                 passportLayout={passportLayout}
@@ -527,7 +571,10 @@ export function ScanPage() {
             </div>
           ) : (
             <>
-              <section className="paper-grid relative min-h-[480px] overflow-hidden lg:h-[calc(100svh-9.55rem)]">
+              <section
+                ref={workspaceRef}
+                className="paper-grid relative min-h-[480px] scroll-mt-16 overflow-hidden lg:h-full lg:min-h-0"
+              >
                 {stage === 'crop' && active && sourceUrl && (
                   <CropEditor
                     sourceUrl={sourceUrl}
@@ -540,7 +587,6 @@ export function ScanPage() {
                         ...active,
                         corners,
                         confidence: 1,
-                        advancedCorrection: undefined,
                         updatedAt: Date.now(),
                       })
                     }
@@ -573,7 +619,7 @@ export function ScanPage() {
                 )}
               </section>
 
-              <aside className="border-t border-border bg-card p-5 lg:h-[calc(100svh-9.55rem)] lg:overflow-y-auto lg:border-l lg:border-t-0 lg:p-6">
+              <aside className="border-t border-border bg-card p-5 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:p-6">
                 {stage === 'crop' && active && (
                   <div className="space-y-5">
                     <div>
@@ -615,21 +661,19 @@ export function ScanPage() {
                       effects={active.effects}
                       adjustments={active.adjustments}
                       glareLevel={active.glareLevel}
-                      advancedReady={modelState === 'ready' || hasUsableAdvancedCorrection(active)}
-                      onAdvancedRequired={() => {
-                        toast('请先安装高级去阴影模型')
-                        navigate('/settings')
-                      }}
-                      onEffectChange={(category, effect) => void changeEffect(category, effect)}
+                      onEffectChange={changeEffect}
                       onPresetApply={applyEffectPreset}
                       onAdjustmentsChange={(adjustments) =>
-                        setActive({ ...active, adjustments, updatedAt: Date.now() })
+                        setActive({
+                          ...active,
+                          adjustments,
+                          updatedAt: Date.now(),
+                        })
                       }
                       onRotate={() =>
                         setActive({
                           ...active,
                           rotation: ((active.rotation + 90) % 360) as ScanPageModel['rotation'],
-                          advancedCorrection: undefined,
                           updatedAt: Date.now(),
                         })
                       }

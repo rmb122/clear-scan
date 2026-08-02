@@ -13,19 +13,24 @@ import { FilterPanel } from './filter-panel'
 afterEach(cleanup)
 
 function StatefulFilterPanel() {
-  const [effects, setEffects] = useState<EnhancementEffects>({ ...ORIGINAL_EFFECTS })
-  const [adjustments, setAdjustments] = useState<EnhancementSettings>({ ...DEFAULT_ADJUSTMENTS })
+  const [effects, setEffects] = useState<EnhancementEffects>({
+    ...ORIGINAL_EFFECTS,
+  })
+  const [adjustments, setAdjustments] = useState<EnhancementSettings>({
+    ...DEFAULT_ADJUSTMENTS,
+  })
   return (
     <FilterPanel
       effects={effects}
       adjustments={adjustments}
       glareLevel="none"
-      advancedReady
       onEffectChange={(category, effect) => {
         setEffects((current) => ({ ...current, [category]: effect }) as EnhancementEffects)
       }}
       onPresetApply={(preset) => {
-        setEffects({ ...(preset === 'original' ? ORIGINAL_EFFECTS : SMART_EFFECTS) })
+        setEffects({
+          ...(preset === 'original' ? ORIGINAL_EFFECTS : SMART_EFFECTS),
+        })
         setAdjustments({ ...DEFAULT_ADJUSTMENTS })
       }}
       onAdjustmentsChange={setAdjustments}
@@ -72,8 +77,7 @@ describe('FilterPanel', () => {
     expect(screen.getByText('当前没有附加效果')).toBeInTheDocument()
   })
 
-  it('locks AI when unavailable and keeps advanced controls collapsed', () => {
-    const onAdvancedRequired = vi.fn()
+  it('describes active glare repair and keeps fine-tuning controls collapsed', () => {
     render(
       <FilterPanel
         effects={SMART_EFFECTS}
@@ -83,12 +87,26 @@ describe('FilterPanel', () => {
         onPresetApply={vi.fn()}
         onAdjustmentsChange={vi.fn()}
         onRotate={vi.fn()}
-        onAdvancedRequired={onAdvancedRequired}
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'AI 去阴影' }))
-    expect(onAdvancedRequired).toHaveBeenCalledOnce()
+    expect(screen.getByRole('status')).toHaveTextContent('已启用去反光')
+    expect(screen.getByRole('status')).not.toHaveTextContent('建议启用去反光')
     expect(screen.getByText(/纯白区域的文字无法恢复/)).toBeInTheDocument()
     expect(screen.getByText('高级微调').closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('recommends glare repair only while it is disabled', () => {
+    render(
+      <FilterPanel
+        effects={ORIGINAL_EFFECTS}
+        adjustments={DEFAULT_ADJUSTMENTS}
+        glareLevel="severe"
+        onEffectChange={vi.fn()}
+        onPresetApply={vi.fn()}
+        onAdjustmentsChange={vi.fn()}
+        onRotate={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('建议启用去反光')
   })
 })

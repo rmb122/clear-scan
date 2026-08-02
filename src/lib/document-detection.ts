@@ -25,7 +25,7 @@ export interface DetectionCandidate {
   penalty: number
 }
 
-export interface CandidateInput {
+interface CandidateInput {
   corners: NormalizedQuad
   source: DetectionCandidateSource
   width: number
@@ -45,7 +45,7 @@ function pixelPoints(corners: NormalizedQuad, width: number, height: number) {
   return corners.map((point) => ({ x: point.x * width, y: point.y * height })) as NormalizedQuad
 }
 
-export function polygonArea(points: Point[]) {
+function polygonArea(points: Point[]) {
   let sum = 0
   for (let index = 0; index < points.length; index += 1) {
     const next = points[(index + 1) % points.length]
@@ -88,16 +88,19 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
     area < 0.06 ||
     area > 0.985 ||
     Math.min(...sides) < diagonal * 0.055 ||
-    angles.some((angle) => angle < Math.PI / 9 || angle > Math.PI * 8 / 9)
+    angles.some((angle) => angle < Math.PI / 9 || angle > (Math.PI * 8) / 9)
 
-  const angleScore = angles.reduce(
-    (sum, angle) => sum + Math.exp(-Math.abs(angle - Math.PI / 2) / (Math.PI / 3)),
-    0,
-  ) / 4
-  const oppositeScore = (
-    Math.exp(-lineAngleDifference(directionAngle(pixels[0], pixels[1]), directionAngle(pixels[3], pixels[2])) / (Math.PI / 6)) +
-    Math.exp(-lineAngleDifference(directionAngle(pixels[0], pixels[3]), directionAngle(pixels[1], pixels[2])) / (Math.PI / 6))
-  ) / 2
+  const angleScore =
+    angles.reduce((sum, angle) => sum + Math.exp(-Math.abs(angle - Math.PI / 2) / (Math.PI / 3)), 0) / 4
+  const oppositeScore =
+    (Math.exp(
+      -lineAngleDifference(directionAngle(pixels[0], pixels[1]), directionAngle(pixels[3], pixels[2])) / (Math.PI / 6),
+    ) +
+      Math.exp(
+        -lineAngleDifference(directionAngle(pixels[0], pixels[3]), directionAngle(pixels[1], pixels[2])) /
+          (Math.PI / 6),
+      )) /
+    2
   const horizontal = Math.max(sides[0], sides[2])
   const vertical = Math.max(sides[1], sides[3])
   const rawRatio = horizontal / Math.max(1, vertical)
@@ -105,41 +108,46 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
   const ratioScore = input.targetRatio
     ? Math.exp(-Math.abs(Math.log(orientationFreeRatio / input.targetRatio)) * 1.8)
     : 1
-  const center = corners.reduce(
-    (sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }),
-    { x: 0, y: 0 },
-  )
+  const center = corners.reduce((sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }), { x: 0, y: 0 })
   const centerScore = 1 - clamp(Math.hypot(center.x - 0.5, center.y - 0.5) / 0.72)
-  const areaScore = area < 0.36
-    ? clamp((area - 0.04) / 0.32)
-    : area <= 0.9
-      ? 1
-      : 1 - clamp((area - 0.9) / 0.085) * 0.42
-  const borderCorners = corners.filter((point) => (
-    point.x < 0.015 || point.x > 0.985 || point.y < 0.015 || point.y > 0.985
-  )).length
-  const borderPenalty = area > 0.94 && borderCorners >= 3
-    ? 0.35
-    : area > 0.76 && borderCorners >= 3
-      ? 0.24
-      : area > 0.86 && borderCorners >= 2
-        ? 0.12
-        : 0
+  const areaScore = area < 0.36 ? clamp((area - 0.04) / 0.32) : area <= 0.9 ? 1 : 1 - clamp((area - 0.9) / 0.085) * 0.42
+  const borderCorners = corners.filter(
+    (point) => point.x < 0.015 || point.x > 0.985 || point.y < 0.015 || point.y > 0.985,
+  ).length
+  const borderPenalty =
+    area > 0.94 && borderCorners >= 3
+      ? 0.35
+      : area > 0.76 && borderCorners >= 3
+        ? 0.24
+        : area > 0.86 && borderCorners >= 2
+          ? 0.12
+          : 0
   const fallbackPenalty = input.source === 'min-area-rect' ? 0.12 : 0
   const perspectivePenalty = input.targetRatio
     ? clamp((0.68 - oppositeScore) / 0.3) * 0.15 + clamp((0.72 - angleScore) / 0.2) * 0.08
     : 0
-  const ratioPenalty = input.targetRatio
-    ? clamp((0.58 - ratioScore) / 0.38) * 0.2
-    : 0
+  const ratioPenalty = input.targetRatio ? clamp((0.58 - ratioScore) / 0.38) * 0.2 : 0
   const penalty = borderPenalty + fallbackPenalty + perspectivePenalty + ratioPenalty
   const edgeSupport = clamp(input.edgeSupport)
   const contrast = clamp(input.contrast)
   const score = invalidGeometry
     ? 0
     : input.targetRatio
-      ? edgeSupport * 0.32 + areaScore * 0.18 + angleScore * 0.14 + oppositeScore * 0.08 + contrast * 0.14 + ratioScore * 0.1 + centerScore * 0.04 - penalty
-      : edgeSupport * 0.37 + areaScore * 0.18 + angleScore * 0.16 + oppositeScore * 0.09 + contrast * 0.16 + centerScore * 0.04 - penalty
+      ? edgeSupport * 0.32 +
+        areaScore * 0.18 +
+        angleScore * 0.14 +
+        oppositeScore * 0.08 +
+        contrast * 0.14 +
+        ratioScore * 0.1 +
+        centerScore * 0.04 -
+        penalty
+      : edgeSupport * 0.37 +
+        areaScore * 0.18 +
+        angleScore * 0.16 +
+        oppositeScore * 0.09 +
+        contrast * 0.16 +
+        centerScore * 0.04 -
+        penalty
 
   return {
     corners,
@@ -157,10 +165,14 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
 }
 
 function meanCornerDistance(left: NormalizedQuad, right: NormalizedQuad, width: number, height: number) {
-  return left.reduce((sum, point, index) => sum + Math.hypot(
-    (point.x - right[index].x) * width,
-    (point.y - right[index].y) * height,
-  ), 0) / 4 / Math.hypot(width, height)
+  return (
+    left.reduce(
+      (sum, point, index) => sum + Math.hypot((point.x - right[index].x) * width, (point.y - right[index].y) * height),
+      0,
+    ) /
+    4 /
+    Math.hypot(width, height)
+  )
 }
 
 export function deduplicateCandidates(
@@ -192,10 +204,7 @@ function pointInsideQuad(point: Point, quad: NormalizedQuad, tolerance = 0.0025)
 }
 
 function quadCenter(quad: NormalizedQuad) {
-  return quad.reduce(
-    (center, point) => ({ x: center.x + point.x / 4, y: center.y + point.y / 4 }),
-    { x: 0, y: 0 },
-  )
+  return quad.reduce((center, point) => ({ x: center.x + point.x / 4, y: center.y + point.y / 4 }), { x: 0, y: 0 })
 }
 
 export function suppressNestedCandidates(candidates: DetectionCandidate[]) {

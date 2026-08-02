@@ -60,11 +60,6 @@ export function modeDefaultName(mode: string) {
     month: '2-digit',
     day: '2-digit',
   }).format(Date.now())
-  const prefix =
-    mode === 'id-card' ? '身份证' : mode === 'passport' ? '护照' : '扫描文档'
+  const prefix = mode === 'id-card' ? '身份证' : mode === 'passport' ? '护照' : '扫描文档'
   return `${prefix} ${date}`
-}
-
-export function blobToArrayBuffer(blob: Blob) {
-  return blob.arrayBuffer()
 }

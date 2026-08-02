@@ -3,13 +3,7 @@ import { Download, MoreHorizontal, RefreshCw, Share, WifiOff } from 'lucide-reac
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -94,6 +88,9 @@ export function InstallButton() {
 
   return (
     <>
+      <Button variant="ghost" size="icon" onClick={() => void install()} className="sm:hidden" aria-label="安装应用">
+        <Download />
+      </Button>
       <Button variant="outline" size="sm" onClick={() => void install()} className="hidden sm:inline-flex">
         <Download /> 安装应用
       </Button>
@@ -104,9 +101,18 @@ export function InstallButton() {
             <DialogDescription>安装后可像普通 App 一样打开，并在完成首次缓存后离线扫描。</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 rounded-2xl bg-muted p-4 text-sm leading-6">
-            <p className="flex gap-3"><Share className="mt-1 size-4 shrink-0 text-primary" />点击 Safari 底部的“分享”按钮。</p>
-            <p className="flex gap-3"><MoreHorizontal className="mt-1 size-4 shrink-0 text-primary" />向下查找并选择“添加到主屏幕”。</p>
-            <p className="flex gap-3"><RefreshCw className="mt-1 size-4 shrink-0 text-primary" />首次打开后等待“离线扫描已就绪”提示。</p>
+            <p className="flex gap-3">
+              <Share className="mt-1 size-4 shrink-0 text-primary" />
+              点击 Safari 底部的“分享”按钮。
+            </p>
+            <p className="flex gap-3">
+              <MoreHorizontal className="mt-1 size-4 shrink-0 text-primary" />
+              向下查找并选择“添加到主屏幕”。
+            </p>
+            <p className="flex gap-3">
+              <RefreshCw className="mt-1 size-4 shrink-0 text-primary" />
+              首次打开后等待“离线扫描已就绪”提示。
+            </p>
           </div>
         </DialogContent>
       </Dialog>

@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { bulkPutPages, clearScannerData, db, deleteAdvancedModel, deleteProject, getProjectWithPages } from './db'
+import { bulkPutPages, clearScannerData, db, deleteProject, getProjectWithPages } from './db'
 import { DEFAULT_QUAD } from './geometry'
 import { DEFAULT_ADJUSTMENTS, SMART_EFFECTS, type ScanPage, type ScanProject } from './types'
 
 afterEach(async () => {
   await clearScannerData()
-  await db.models.clear()
-  await db.modelChunks.clear()
 })
 
 describe('local scan repository', () => {
@@ -34,20 +32,7 @@ describe('local scan repository', () => {
       rotation: 0,
       effects: { ...SMART_EFFECTS },
       adjustments: DEFAULT_ADJUSTMENTS,
-      advancedCorrection:
-        id === 'page-1'
-          ? {
-              fingerprint: 'fingerprint-1',
-              modelId: 'docshadow-sd7k-fp16',
-              modelVersion: '1.0.0-fp16',
-              map: new Blob(['gain-map'], { type: 'image/png' }),
-              width: 64,
-              height: 64,
-              backend: 'wasm',
-              inferenceMs: 42,
-              createdAt: now,
-            }
-          : undefined,
+      thumbnail: new Blob(['thumbnail'], { type: 'image/jpeg' }),
       createdAt: now,
       updatedAt: now,
     })
@@ -55,39 +40,21 @@ describe('local scan repository', () => {
     await db.projects.put(project)
     await bulkPutPages([makePage('page-2', 1), makePage('page-1', 0)])
     const rawPage = await db.pages.get('page-1')
-    expect(rawPage).toBeDefined()
     expect(rawPage?.source.data.byteLength).toBeGreaterThan(0)
-    expect(rawPage?.advancedCorrection?.map.data.byteLength).toBeGreaterThan(0)
+    expect(rawPage?.thumbnail?.data.byteLength).toBeGreaterThan(0)
+
     const stored = await getProjectWithPages(project.id)
     expect(stored.project?.name).toBe('测试文档')
     expect(stored.pages.map((page) => page.id)).toEqual(['page-1', 'page-2'])
     expect(stored.pages[0].source).toBeInstanceOf(Blob)
-    expect(stored.pages[0].advancedCorrection?.map).toBeInstanceOf(Blob)
-
-    await db.models.put({
-      id: 'docshadow-sd7k-fp16',
-      version: '1.0.0-fp16',
-      state: 'ready',
-      expectedBytes: 4,
-      downloadedBytes: 4,
-      sha256: 'test',
-    })
-    await db.modelChunks.put({
-      modelId: 'docshadow-sd7k-fp16',
-      index: 0,
-      data: new Uint8Array([1, 2, 3, 4]).buffer,
-    })
-    await deleteAdvancedModel('docshadow-sd7k-fp16')
-    expect(await db.models.count()).toBe(0)
-    expect(await db.modelChunks.count()).toBe(0)
-    expect((await getProjectWithPages(project.id)).pages[0].advancedCorrection?.map.size).toBeGreaterThan(0)
+    expect(stored.pages[0].thumbnail).toBeInstanceOf(Blob)
 
     await deleteProject(project.id)
     expect(await db.projects.count()).toBe(0)
     expect(await db.pages.count()).toBe(0)
   })
 
-  it('clears scan history without uninstalling the advanced model', async () => {
+  it('clears all scan history and exposes no model stores', async () => {
     const now = Date.now()
     await db.projects.put({
       id: 'project-to-clear',
@@ -96,24 +63,11 @@ describe('local scan repository', () => {
       createdAt: now,
       updatedAt: now,
     })
-    await db.models.put({
-      id: 'docshadow-sd7k-fp16',
-      version: '1.0.0-fp16',
-      state: 'ready',
-      expectedBytes: 4,
-      downloadedBytes: 4,
-      sha256: 'test',
-    })
-    await db.modelChunks.put({
-      modelId: 'docshadow-sd7k-fp16',
-      index: 0,
-      data: new Uint8Array([1, 2, 3, 4]).buffer,
-    })
 
     await clearScannerData()
 
     expect(await db.projects.count()).toBe(0)
-    expect(await db.models.count()).toBe(1)
-    expect(await db.modelChunks.count()).toBe(1)
+    expect(await db.pages.count()).toBe(0)
+    expect(db.tables.map((table) => table.name)).toEqual(['projects', 'pages'])
   })
 })

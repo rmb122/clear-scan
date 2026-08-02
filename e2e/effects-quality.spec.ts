@@ -54,6 +54,10 @@ async function createQualityFixture(page: Page) {
     }
     context.fillStyle = '#328d72'
     context.fillRect(x(0.15), y(0.69), x(0.31) - x(0.15), y(0.78) - y(0.69))
+    context.fillStyle = '#684b8e'
+    context.fillRect(x(0.64), y(0.7), x(0.86) - x(0.64), y(0.79) - y(0.7))
+    context.fillStyle = '#faf9f6'
+    context.fillRect(x(0.68), y(0.73), x(0.81) - x(0.68), y(0.744) - y(0.73))
 
     let seed = 0x51f15e
     for (let index = 0; index < 9_000; index += 1) {
@@ -159,6 +163,7 @@ async function readRegions(page: Page) {
       redHalo: stats(0.14, 0.28, 0.075, 0.095),
       blueMark: stats(0.63, 0.67, 0.13, 0.2),
       glare: stats(0.735, 0.775, 0.145, 0.185),
+      whiteGraphic: stats(0.69, 0.8, 0.731, 0.742),
       fineText: stats(0.18, 0.65, 0.515, 0.665),
       noisePaper: stats(0.55, 0.85, 0.82, 0.9),
     }
@@ -186,6 +191,7 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
   await page.getByRole('button', { name: '确认裁剪' }).click()
   const initial = await waitForPreviewChange(page)
+  await expect(page.getByRole('status')).toContainText('已启用去反光')
   const smart = await readRegions(page)
   await page.getByRole('button', { name: '原版', exact: true }).click()
   const originalSource = await waitForPreviewChange(page, initial)
@@ -226,6 +232,8 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   expect(glare.glare.luma).toBeLessThan(original.glare.luma - 10)
   expect(glare.glare.saturation).toBeGreaterThan(original.glare.saturation * 1.6)
   expect(glare.blueMark.saturation).toBeGreaterThan(original.blueMark.saturation * 0.95)
+  expect(Math.abs(glare.whiteGraphic.luma - original.whiteGraphic.luma)).toBeLessThan(3)
+  expect(glare.whiteGraphic.saturation).toBeLessThan(original.whiteGraphic.saturation + 3)
 
   expect(Math.min(color.leftPaper.luma, color.rightPaper.luma)).toBeGreaterThan(242)
   expect(Math.abs(color.rightPaper.luma - color.leftPaper.luma)).toBeLessThan(4)
