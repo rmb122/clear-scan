@@ -91,6 +91,9 @@ interface WorkerRequestBase {
 
 export type ScannerWorkerRequest =
   | (WorkerRequestBase & {
+      type: 'init'
+    })
+  | (WorkerRequestBase & {
       type: 'detect'
       source: Blob
       mode: ScanMode
@@ -104,6 +107,7 @@ export type ScannerWorkerRequest =
 
 export type ScannerWorkerResponse =
   | { id: string; type: 'progress'; progress: number; label: string }
+  | { id: string; type: 'ready' }
   | { id: string; type: 'detected'; result: DetectionResult }
   | {
       id: string

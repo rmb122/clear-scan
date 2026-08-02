@@ -1,9 +1,18 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { bulkPutPages, clearScannerData, db, deleteProject, getProjectWithPages } from './db'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  bulkPutPages,
+  clearScannerData,
+  db,
+  deleteProject,
+  getProjectWithPages,
+  updatePageMetadata,
+  updatePageWithThumbnail,
+} from './db'
 import { DEFAULT_QUAD } from './geometry'
 import { DEFAULT_ADJUSTMENTS, SMART_EFFECTS, type ScanPage, type ScanProject } from './types'
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await clearScannerData()
 })
 
@@ -39,8 +48,9 @@ describe('local scan repository', () => {
       updatedAt: now,
     })
 
+    const firstPage = makePage('page-1', 0)
     await db.projects.put(project)
-    await bulkPutPages([makePage('page-2', 1), makePage('page-1', 0)])
+    await bulkPutPages([makePage('page-2', 1), firstPage])
     const rawPage = await db.pages.get('page-1')
     expect(rawPage?.source.data.byteLength).toBeGreaterThan(0)
     expect(rawPage?.thumbnail?.data.byteLength).toBeGreaterThan(0)
@@ -50,6 +60,18 @@ describe('local scan repository', () => {
     expect(stored.pages.map((page) => page.id)).toEqual(['page-1', 'page-2'])
     expect(stored.pages[0].source).toBeInstanceOf(Blob)
     expect(stored.pages[0].thumbnail).toBeInstanceOf(Blob)
+
+    const sourceRead = vi.spyOn(firstPage.source, 'arrayBuffer')
+    await updatePageMetadata({ ...firstPage, rotation: 90, updatedAt: now + 1 })
+    expect(sourceRead).not.toHaveBeenCalled()
+    const metadataUpdated = await getProjectWithPages(project.id)
+    expect(metadataUpdated.pages[0].rotation).toBe(90)
+
+    const nextThumbnail = new Blob(['new-thumbnail'], { type: 'image/jpeg' })
+    await updatePageWithThumbnail({ ...firstPage, rotation: 90 }, nextThumbnail)
+    expect(sourceRead).not.toHaveBeenCalled()
+    const thumbnailUpdated = await getProjectWithPages(project.id)
+    expect(await thumbnailUpdated.pages[0].thumbnail?.text()).toBe('new-thumbnail')
 
     await deleteProject(project.id)
     expect(await db.projects.count()).toBe(0)

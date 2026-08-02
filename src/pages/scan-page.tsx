@@ -20,9 +20,16 @@ import { PageRail } from '@/components/page-rail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { bulkPutPages, db, getProjectWithPages, putPage } from '@/lib/db'
+import {
+  bulkUpdatePageMetadata,
+  db,
+  getProjectWithPages,
+  putPage,
+  updatePageMetadata,
+  updatePageWithThumbnail,
+} from '@/lib/db'
 import { DEFAULT_QUAD } from '@/lib/geometry'
-import { scannerClient } from '@/lib/scanner-client'
+import { isAbortError, scannerClient } from '@/lib/scanner-client'
 import {
   DEFAULT_ADJUSTMENTS,
   ORIGINAL_EFFECTS,
@@ -126,6 +133,10 @@ export function ScanPage() {
     mode === 'id-card' ? (pages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
 
   useEffect(() => {
+    void scannerClient.prewarm().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     activeRef.current = active
     projectRef.current = project
   }, [active, project])
@@ -137,7 +148,7 @@ export function ScanPage() {
       if (!latestPage || !latestProject) return
       const updatedAt = Date.now()
       void Promise.all([
-        putPage({ ...latestPage, updatedAt }),
+        updatePageMetadata({ ...latestPage, updatedAt }),
         db.projects.update(latestProject.id, { updatedAt }),
       ]).catch(() => undefined)
     },
@@ -223,10 +234,15 @@ export function ScanPage() {
     const page = activeRef.current
     if (!page || !activeRenderKey || stage !== 'enhance') return
     let cancelled = false
+    const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setRendering(true)
       void scannerClient
-        .render(page, { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 })
+        .render(
+          page,
+          { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 },
+          { intent: 'preview', signal: controller.signal },
+        )
         .then(({ blob }) => {
           if (cancelled) return
           replacePreview({
@@ -237,7 +253,7 @@ export function ScanPage() {
           })
         })
         .catch((reason: unknown) => {
-          if (!cancelled)
+          if (!cancelled && !isAbortError(reason))
             toast.error('预览生成失败', {
               description: reason instanceof Error ? reason.message : '请重试',
             })
@@ -246,6 +262,7 @@ export function ScanPage() {
     }, 220)
     return () => {
       cancelled = true
+      controller.abort()
       window.clearTimeout(timer)
     }
   }, [activeRenderKey, activeSource, replacePreview, stage])
@@ -253,7 +270,7 @@ export function ScanPage() {
   useEffect(() => {
     if (!active || !project) return
     const timer = window.setTimeout(() => {
-      void putPage({ ...active, updatedAt: Date.now() })
+      void updatePageMetadata({ ...active, updatedAt: Date.now() })
         .then(() => db.projects.update(project.id, { updatedAt: Date.now() }))
         .catch((reason: unknown) => {
           toast.error('自动保存失败', {
@@ -347,12 +364,14 @@ export function ScanPage() {
 
   const saveActive = async () => {
     if (!active || !project) return
+    const currentThumbnail = previewIsCurrent && activePreview ? activePreview.blob : undefined
     const saved = {
       ...active,
-      thumbnail: previewIsCurrent && activePreview ? activePreview.blob : active.thumbnail,
+      thumbnail: currentThumbnail ?? active.thumbnail,
       updatedAt: Date.now(),
     }
-    await putPage(saved)
+    if (currentThumbnail) await updatePageWithThumbnail(saved, currentThumbnail)
+    else await updatePageMetadata(saved)
     await db.projects.update(project.id, { updatedAt: Date.now() })
     const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
     setPages(nextPages)
@@ -393,11 +412,12 @@ export function ScanPage() {
     )
       return
     await db.pages.delete(page.id)
+    scannerClient.invalidatePage(page.id)
     const remaining = effectivePages
       .filter((item) => item.id !== page.id)
       .sort((a, b) => a.order - b.order)
       .map((item, index) => ({ ...item, order: index }))
-    await bulkPutPages(remaining)
+    await bulkUpdatePageMetadata(remaining)
     setPages(remaining)
     if (active?.id === page.id) {
       setActive(remaining[0])
@@ -417,7 +437,7 @@ export function ScanPage() {
       order,
       updatedAt: Date.now(),
     }))
-    await bulkPutPages(reordered)
+    await bulkUpdatePageMetadata(reordered)
     setPages(reordered)
     setActive((current) => (current ? reordered.find((item) => item.id === current.id) : current))
   }
@@ -447,7 +467,7 @@ export function ScanPage() {
     const saved = { ...active, updatedAt: Date.now() }
     const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
     setPages(nextPages)
-    void putPage(saved)
+    void updatePageMetadata(saved)
       .then(() => (project ? db.projects.update(project.id, { updatedAt: saved.updatedAt }) : undefined))
       .catch((reason: unknown) => {
         toast.error('页面保存失败', {
@@ -503,7 +523,7 @@ export function ScanPage() {
     if (!active) return
     const confirmed = { ...active, cropConfirmed: true, updatedAt: Date.now() }
     setActive(confirmed)
-    void putPage(confirmed).catch((reason: unknown) => {
+    void updatePageMetadata(confirmed).catch((reason: unknown) => {
       if (activeRef.current?.id === confirmed.id) {
         replacePreview()
         setActive((current) => (current?.id === confirmed.id ? { ...current, cropConfirmed: false } : current))
@@ -523,7 +543,7 @@ export function ScanPage() {
     replacePreview()
     setRendering(false)
     setActive(unconfirmed)
-    void putPage(unconfirmed).catch((reason: unknown) => {
+    void updatePageMetadata(unconfirmed).catch((reason: unknown) => {
       toast.error('裁剪状态保存失败', {
         id: 'crop-confirmation-save-error',
         description: reason instanceof Error ? reason.message : '浏览器无法写入本地存储',

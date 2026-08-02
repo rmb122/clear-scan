@@ -11,6 +11,8 @@ type StoredScanPage = Omit<ScanPage, 'source' | 'thumbnail'> & {
   thumbnail?: StoredBinary
 }
 
+type StoredPageMetadata = Omit<StoredScanPage, 'id' | 'source' | 'thumbnail'>
+
 class ScannerDatabase extends Dexie {
   projects!: EntityTable<ScanProject, 'id'>
   pages!: EntityTable<StoredScanPage, 'id'>
@@ -46,6 +48,11 @@ async function encodePage(page: ScanPage): Promise<StoredScanPage> {
   }
 }
 
+function pageMetadata(page: ScanPage): StoredPageMetadata {
+  const { id: _id, source: _source, thumbnail: _thumbnail, ...metadata } = page
+  return metadata
+}
+
 function decodePage(page: StoredScanPage): ScanPage {
   const { source, thumbnail, adjustments, cornerSource, cropConfirmed, ...metadata } = page
   return {
@@ -68,6 +75,25 @@ export async function putPage(page: ScanPage) {
 export async function bulkPutPages(pages: ScanPage[]) {
   const storedPages = await Promise.all(pages.map(encodePage))
   return db.pages.bulkPut(storedPages)
+}
+
+export async function updatePageMetadata(page: ScanPage) {
+  const updated = await db.pages.update(page.id, pageMetadata(page))
+  if (!updated) return putPage(page)
+  return updated
+}
+
+export async function updatePageWithThumbnail(page: ScanPage, thumbnail: Blob) {
+  const updated = await db.pages.update(page.id, {
+    ...pageMetadata(page),
+    thumbnail: await encodeBinary(thumbnail),
+  })
+  if (!updated) return putPage({ ...page, thumbnail })
+  return updated
+}
+
+export async function bulkUpdatePageMetadata(pages: ScanPage[]) {
+  return Promise.all(pages.map(updatePageMetadata))
 }
 
 export async function getProjectPages(projectId: string) {

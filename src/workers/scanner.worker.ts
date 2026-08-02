@@ -633,12 +633,14 @@ function findDocumentQuad(
 
 function detectGlare(cv: CV, source: Mat): GlareLevel {
   const highlight = recoverableHighlightMask(cv, source)
-  let glare = 0
-  for (const value of highlight.data) glare += value
-  const ratio = glare / Math.max(1, highlight.data.length)
-  if (ratio > 0.012) return 'severe'
-  if (ratio > 0.002) return 'mild'
-  return 'none'
+  try {
+    const ratio = highlight.count / Math.max(1, highlight.data.length)
+    if (ratio > 0.012) return 'severe'
+    if (ratio > 0.002) return 'mild'
+    return 'none'
+  } finally {
+    highlight.source.delete()
+  }
 }
 
 async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, passportLayout?: PassportLayout) {
@@ -674,6 +676,11 @@ async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, pass
   }
 }
 
+async function initialize(id: string) {
+  await ensureOpenCv(id)
+  post({ id, type: 'ready' })
+}
+
 function rotateMat(cv: CV, source: Mat, rotation: ScanPage['rotation']) {
   if (rotation === 0) return source.clone()
   const output = new cv.Mat()
@@ -684,6 +691,7 @@ function rotateMat(cv: CV, source: Mat, rotation: ScanPage['rotation']) {
 }
 
 function applyToneAdjustments(mat: Mat, adjustments: EnhancementSettings) {
+  if (adjustments.brightness === 0 && adjustments.contrast === 0) return
   const data = mat.data
   const contrast = 1 + adjustments.contrast / 100
   const brightness = adjustments.brightness
@@ -709,7 +717,23 @@ function pixelLuma(red: number, green: number, blue: number) {
   return red * 0.299 + green * 0.587 + blue * 0.114
 }
 
-function recoverableHighlightMask(cv: CV, source: Mat) {
+interface HighlightRegion {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}
+
+interface HighlightAnalysis {
+  data: Uint8Array
+  width: number
+  height: number
+  count: number
+  regions: HighlightRegion[]
+  source: Mat
+}
+
+function recoverableHighlightMask(cv: CV, source: Mat): HighlightAnalysis {
   const analysis = new cv.Mat()
   try {
     const scale = Math.min(1, 640 / Math.max(source.cols, source.rows))
@@ -763,6 +787,8 @@ function recoverableHighlightMask(cv: CV, source: Mat) {
     // component geometry and tone spread protect legitimate white text, logos,
     // barcodes and solid design elements inside coloured regions.
     const recoverable = new Uint8Array(candidate.length)
+    const regions: HighlightRegion[] = []
+    let recoverableCount = 0
     const minimumArea = Math.max(32, Math.round(candidate.length * 0.00025))
     const maximumArea = Math.round(candidate.length * 0.12)
     const minimumSpan = Math.max(6, Math.round(Math.min(width, height) * 0.018))
@@ -834,53 +860,99 @@ function recoverableHighlightMask(cv: CV, source: Mat) {
         deviation >= 7 &&
         shoulderPixels / area >= 0.18
       if (!isGraduatedBlob) continue
-      for (let index = 0; index < tail; index += 1) recoverable[queue[index]] = 1
+      regions.push({ minX, maxX, minY, maxY })
+      for (let index = 0; index < tail; index += 1) {
+        recoverable[queue[index]] = 1
+        recoverableCount += 1
+      }
     }
-    return { data: recoverable, width, height }
-  } finally {
+    return {
+      data: recoverable,
+      width,
+      height,
+      count: recoverableCount,
+      regions,
+      source: analysis,
+    }
+  } catch (error) {
     analysis.delete()
+    throw error
   }
 }
 
 function applyGlareReduction(cv: CV, source: Mat) {
+  const highlight = recoverableHighlightMask(cv, source)
   const background = new cv.Mat()
   try {
-    // Glare can be much wider than a text line. A large colour-aware background
-    // estimate lets us reconstruct both luminance and local paper/ink chroma.
-    const kernelSize = scaledOdd(Math.min(source.cols, source.rows) / 5, 61, 201)
-    cv.GaussianBlur(source, background, new cv.Size(kernelSize, kernelSize), 0)
-    const highlight = recoverableHighlightMask(cv, source)
+    // Most scans do not contain a recoverable highlight. Detecting first avoids
+    // a large full-resolution blur that used to dominate every smart export.
+    if (highlight.count === 0) return
+
+    // Glare is low-frequency, so its colour-aware background can be estimated
+    // on the analysis image and sampled back into only the affected regions.
+    const fullKernel = scaledOdd(Math.min(source.cols, source.rows) / 5, 61, 201)
+    const analysisScale = Math.min(highlight.width / source.cols, highlight.height / source.rows)
+    const kernelSize = scaledOdd(fullKernel * analysisScale, 9, 101)
+    cv.GaussianBlur(highlight.source, background, new cv.Size(kernelSize, kernelSize), 0)
     const pixels = source.data
-    for (let y = 0; y < source.rows; y += 1) {
-      const maskY = Math.min(highlight.height - 1, Math.floor((y * highlight.height) / source.rows))
-      for (let x = 0; x < source.cols; x += 1) {
-        const maskX = Math.min(highlight.width - 1, Math.floor((x * highlight.width) / source.cols))
-        if (!highlight.data[maskY * highlight.width + maskX]) continue
-        const index = (y * source.cols + x) * 4
-        const red = pixels[index]
-        const green = pixels[index + 1]
-        const blue = pixels[index + 2]
-        const light = pixelLuma(red, green, blue)
-        const localRed = background.data[index]
-        const localGreen = background.data[index + 1]
-        const localBlue = background.data[index + 2]
-        const localLight = pixelLuma(localRed, localGreen, localBlue)
-        const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
-        const excess = light - localLight
-        const strength = smoothstep(198, 244, light) * smoothstep(4, 38, excess) * (1 - smoothstep(28, 82, saturation))
-        if (strength < 0.01) continue
-        const targetLight = localLight + Math.min(7, Math.max(0, excess) * 0.12)
-        const reconstructedRed = targetLight + (localRed - localLight) * 1.18
-        const reconstructedGreen = targetLight + (localGreen - localLight) * 1.18
-        const reconstructedBlue = targetLight + (localBlue - localLight) * 1.18
-        const blend = strength * 0.94
-        pixels[index] = clamp(mix(red, reconstructedRed, blend), 0, 255)
-        pixels[index + 1] = clamp(mix(green, reconstructedGreen, blend), 0, 255)
-        pixels[index + 2] = clamp(mix(blue, reconstructedBlue, blend), 0, 255)
+    const scaleX = highlight.width / source.cols
+    const scaleY = highlight.height / source.rows
+    for (const region of highlight.regions) {
+      const startX = Math.max(0, Math.floor(region.minX / scaleX))
+      const endX = Math.min(source.cols - 1, Math.ceil((region.maxX + 1) / scaleX) - 1)
+      const startY = Math.max(0, Math.floor(region.minY / scaleY))
+      const endY = Math.min(source.rows - 1, Math.ceil((region.maxY + 1) / scaleY) - 1)
+      for (let y = startY; y <= endY; y += 1) {
+        const sampleY = clamp((y + 0.5) * scaleY - 0.5, 0, highlight.height - 1)
+        const top = Math.floor(sampleY)
+        const bottom = Math.min(highlight.height - 1, top + 1)
+        const mixY = sampleY - top
+        const maskY = Math.min(highlight.height - 1, Math.floor(y * scaleY))
+        for (let x = startX; x <= endX; x += 1) {
+          const maskX = Math.min(highlight.width - 1, Math.floor(x * scaleX))
+          if (!highlight.data[maskY * highlight.width + maskX]) continue
+          const index = (y * source.cols + x) * 4
+          const red = pixels[index]
+          const green = pixels[index + 1]
+          const blue = pixels[index + 2]
+          const light = pixelLuma(red, green, blue)
+          const sampleX = clamp((x + 0.5) * scaleX - 0.5, 0, highlight.width - 1)
+          const left = Math.floor(sampleX)
+          const right = Math.min(highlight.width - 1, left + 1)
+          const mixX = sampleX - left
+          const topLeft = (top * highlight.width + left) * 4
+          const topRight = (top * highlight.width + right) * 4
+          const bottomLeft = (bottom * highlight.width + left) * 4
+          const bottomRight = (bottom * highlight.width + right) * 4
+          const sampleChannel = (channel: number) =>
+            mix(
+              mix(background.data[topLeft + channel], background.data[topRight + channel], mixX),
+              mix(background.data[bottomLeft + channel], background.data[bottomRight + channel], mixX),
+              mixY,
+            )
+          const localRed = sampleChannel(0)
+          const localGreen = sampleChannel(1)
+          const localBlue = sampleChannel(2)
+          const localLight = pixelLuma(localRed, localGreen, localBlue)
+          const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
+          const excess = light - localLight
+          const strength =
+            smoothstep(198, 244, light) * smoothstep(4, 38, excess) * (1 - smoothstep(28, 82, saturation))
+          if (strength < 0.01) continue
+          const targetLight = localLight + Math.min(7, Math.max(0, excess) * 0.12)
+          const reconstructedRed = targetLight + (localRed - localLight) * 1.18
+          const reconstructedGreen = targetLight + (localGreen - localLight) * 1.18
+          const reconstructedBlue = targetLight + (localBlue - localLight) * 1.18
+          const blend = strength * 0.94
+          pixels[index] = clamp(mix(red, reconstructedRed, blend), 0, 255)
+          pixels[index + 1] = clamp(mix(green, reconstructedGreen, blend), 0, 255)
+          pixels[index + 2] = clamp(mix(blue, reconstructedBlue, blend), 0, 255)
+        }
       }
     }
   } finally {
     background.delete()
+    highlight.source.delete()
   }
 }
 
@@ -1280,7 +1352,11 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
     const canvas = new OffscreenCanvas(filtered.cols, filtered.rows)
     const context = canvas.getContext('2d')
     if (!context) throw new Error('无法生成扫描结果')
-    const pixels = new Uint8ClampedArray(filtered.data)
+    const pixels = new Uint8ClampedArray(
+      filtered.data.buffer as ArrayBuffer,
+      filtered.data.byteOffset,
+      filtered.data.byteLength,
+    )
     context.putImageData(new ImageData(pixels, filtered.cols, filtered.rows), 0, 0)
     const blob = await canvas.convertToBlob({ type: mimeType, quality })
     post({ id, type: 'progress', progress: 100, label: '处理完成' })
@@ -1305,7 +1381,9 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
 workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerRequest>) => {
   const request = event.data
   const task =
-    request.type === 'detect'
+    request.type === 'init'
+      ? initialize(request.id)
+      : request.type === 'detect'
       ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
       : renderPage(request.id, request.page, request.options.maxEdge, request.options.mimeType, request.options.quality)
 

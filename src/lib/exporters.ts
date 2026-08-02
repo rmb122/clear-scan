@@ -28,7 +28,11 @@ async function canvasToBlob(canvas: HTMLCanvasElement, mimeType: 'image/jpeg' | 
 }
 
 async function renderScanPage(page: ScanPage, mimeType: 'image/jpeg' | 'image/png') {
-  return scannerClient.render(page, { maxEdge: 3000, mimeType, quality: 0.94 })
+  return scannerClient.render(
+    page,
+    { maxEdge: 3000, mimeType, quality: 0.94 },
+    { intent: 'export' },
+  )
 }
 
 async function composeIdCard(
@@ -158,7 +162,9 @@ export async function exportProject(
       const rendered = await renderScanPage(orderedPages[index], 'image/jpeg')
       zip.file(`${baseName}-${String(index + 1).padStart(2, '0')}.jpg`, rendered.blob)
     }
-    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+    // JPEG pages are already compressed; deflating them again costs CPU while
+    // usually saving almost no space, especially on mobile devices.
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
     onProgress?.(100, '图片包已生成')
     return { blob, fileName: `${baseName}-图片包.zip` }
   }
