@@ -47,11 +47,13 @@ async function encodePage(page: ScanPage): Promise<StoredScanPage> {
 }
 
 function decodePage(page: StoredScanPage): ScanPage {
-  const { source, thumbnail, adjustments, ...metadata } = page
+  const { source, thumbnail, adjustments, cornerSource, cropConfirmed, ...metadata } = page
   return {
     ...metadata,
     source: decodeBinary(source),
     thumbnail: thumbnail ? decodeBinary(thumbnail) : undefined,
+    cornerSource: cornerSource ?? 'unverified',
+    cropConfirmed: cropConfirmed ?? false,
     adjustments: {
       ...DEFAULT_ADJUSTMENTS,
       ...adjustments,

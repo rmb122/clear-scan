@@ -58,7 +58,10 @@ export function PageRail({
               <div className="aspect-[4/3] overflow-hidden rounded-lg bg-muted">
                 <img src={urls[page.id]} alt="" className="size-full object-cover" />
               </div>
-              <span className="mt-1.5 block truncate px-1 text-[10px] font-semibold">{label}</span>
+              <span className="mt-1.5 block truncate px-1 text-[10px] font-semibold">
+                {label}
+                {!page.cropConfirmed && <span className="ml-1 text-amber-600">待确认</span>}
+              </span>
             </button>
             {active && (
               <div className="absolute right-1 top-1 flex overflow-hidden rounded-lg bg-black/65 text-white backdrop-blur">

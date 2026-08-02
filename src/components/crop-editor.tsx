@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { DETECTION_CONFIDENCE_THRESHOLD } from '@/lib/document-detection'
-import type { NormalizedQuad } from '@/lib/types'
+import type { CornerSource, NormalizedQuad } from '@/lib/types'
 import { clamp } from '@/lib/geometry'
 
 export function CropEditor({
@@ -9,14 +8,14 @@ export function CropEditor({
   width,
   height,
   corners,
-  confidence,
+  cornerSource,
   onChange,
 }: {
   sourceUrl: string
   width: number
   height: number
   corners: NormalizedQuad
-  confidence: number
+  cornerSource: CornerSource
   onChange: (corners: NormalizedQuad) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -113,10 +112,16 @@ export function CropEditor({
           </button>
         ))}
         <Badge
-          variant={confidence >= DETECTION_CONFIDENCE_THRESHOLD ? 'default' : 'warning'}
+          variant={cornerSource === 'detected' || cornerSource === 'manual' ? 'default' : 'warning'}
           className="pointer-events-none absolute -top-10 left-0 shadow-sm"
         >
-          {confidence >= DETECTION_CONFIDENCE_THRESHOLD ? '已自动找到边缘' : '请拖动四角确认边缘'}
+          {cornerSource === 'detected'
+            ? '已预识别边缘，请人工确认'
+            : cornerSource === 'manual'
+              ? '已手动调整边缘'
+              : cornerSource === 'fallback'
+                ? '未可靠识别，请拖动四角'
+                : '请人工确认文档边缘'}
         </Badge>
       </div>
     </div>

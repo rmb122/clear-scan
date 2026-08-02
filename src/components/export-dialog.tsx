@@ -25,6 +25,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
   const idComplete =
     project.mode !== 'id-card' ||
     (pages.some((page) => page.role === 'front') && pages.some((page) => page.role === 'back'))
+  const allCropsConfirmed = pages.length > 0 && pages.every((page) => page.cropConfirmed)
   const formats: Array<{
     value: ExportFormat
     label: string
@@ -97,7 +98,10 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !exporting && setOpen(nextOpen)}>
       <DialogTrigger asChild>
-        <Button disabled={!pages.length || !idComplete}>
+        <Button
+          disabled={!pages.length || !idComplete || !allCropsConfirmed}
+          title={!allCropsConfirmed ? '请先确认所有页面的裁剪边缘' : undefined}
+        >
           <Download />
           导出
         </Button>

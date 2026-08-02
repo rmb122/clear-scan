@@ -23,6 +23,8 @@ export interface EnhancementEffects {
 
 export type GlareLevel = 'none' | 'mild' | 'severe'
 
+export type CornerSource = 'detected' | 'manual' | 'fallback' | 'unverified'
+
 export interface Point {
   x: number
   y: number
@@ -57,6 +59,8 @@ export interface ScanPage {
   height: number
   corners: NormalizedQuad
   confidence: number
+  cornerSource: CornerSource
+  cropConfirmed: boolean
   glareLevel: GlareLevel
   rotation: 0 | 90 | 180 | 270
   effects: EnhancementEffects
@@ -71,6 +75,7 @@ export interface DetectionResult {
   height: number
   corners: NormalizedQuad
   confidence: number
+  cornerSource: CornerSource
   glareLevel: GlareLevel
 }
 

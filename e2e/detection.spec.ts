@@ -16,42 +16,72 @@ const cases: DetectionCase[] = [
   {
     fixture: 'document.svg',
     mode: 'document',
-    expected: [[180, 105], [1050, 165], [980, 805], [115, 735]],
+    expected: [
+      [180, 105],
+      [1050, 165],
+      [980, 805],
+      [115, 735],
+    ],
     meanLimit: 0.015,
     maxLimit: 0.03,
   },
   {
     fixture: 'low-contrast.svg',
     mode: 'document',
-    expected: [[160, 120], [1040, 155], [985, 790], [120, 742]],
+    expected: [
+      [160, 120],
+      [1040, 155],
+      [985, 790],
+      [120, 742],
+    ],
     meanLimit: 0.03,
     maxLimit: 0.05,
   },
   {
     fixture: 'complex-background.svg',
     mode: 'document',
-    expected: [[175, 95], [1030, 175], [965, 812], [105, 720]],
+    expected: [
+      [175, 95],
+      [1030, 175],
+      [965, 812],
+      [105, 720],
+    ],
     meanLimit: 0.03,
     maxLimit: 0.05,
   },
   {
     fixture: 'reflective-id.svg',
     mode: 'id-card',
-    expected: [[170, 185], [1040, 220], [982, 740], [138, 682]],
+    expected: [
+      [170, 185],
+      [1040, 220],
+      [982, 740],
+      [138, 682],
+    ],
     meanLimit: 0.04,
     maxLimit: 0.06,
   },
   {
     fixture: 'broken-passport.svg',
     mode: 'passport',
-    expected: [[210, 175], [1000, 140], [1040, 675], [175, 730]],
+    expected: [
+      [210, 175],
+      [1000, 140],
+      [1040, 675],
+      [175, 730],
+    ],
     meanLimit: 0.04,
     maxLimit: 0.06,
   },
   {
     fixture: 'passport-inner-frame.svg',
     mode: 'passport',
-    expected: [[145, 105], [1050, 150], [1002, 790], [100, 735]],
+    expected: [
+      [145, 105],
+      [1050, 150],
+      [1002, 790],
+      [100, 735],
+    ],
     meanLimit: 0.045,
     maxLimit: 0.07,
   },
@@ -72,10 +102,12 @@ async function rasterizeSvg(page: Page, fixture: string) {
       const context = canvas.getContext('2d')
       if (!context) throw new Error('Unable to create fixture canvas')
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
-        (value) => value ? resolve(value) : reject(new Error('Unable to rasterize fixture')),
-        'image/png',
-      ))
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (value) => (value ? resolve(value) : reject(new Error('Unable to rasterize fixture'))),
+          'image/png',
+        ),
+      )
       return Array.from(new Uint8Array(await blob.arrayBuffer()))
     } finally {
       URL.revokeObjectURL(url)
@@ -91,7 +123,15 @@ async function readDetection(page: Page, sourceName: string) {
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
-    const records = await new Promise<Array<{ sourceName: string; confidence: number; corners: NormalizedQuad }>>((resolve, reject) => {
+    const records = await new Promise<
+      Array<{
+        sourceName: string
+        confidence: number
+        cornerSource: string
+        cropConfirmed: boolean
+        corners: NormalizedQuad
+      }>
+    >((resolve, reject) => {
       const request = database.transaction('pages').objectStore('pages').getAll()
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
@@ -99,7 +139,12 @@ async function readDetection(page: Page, sourceName: string) {
     database.close()
     const record = records.find((item) => item.sourceName === name)
     if (!record) throw new Error(`Missing stored detection for ${name}`)
-    return { confidence: record.confidence, corners: record.corners }
+    return {
+      confidence: record.confidence,
+      cornerSource: record.cornerSource,
+      cropConfirmed: record.cropConfirmed,
+      corners: record.corners,
+    }
   }, sourceName)
 }
 
@@ -115,11 +160,15 @@ test('detects difficult document edges and rejects scenes without a document', a
         mimeType: 'image/png',
         buffer,
       })
-      await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+      await expect(page.getByText('确认四个角点')).toBeVisible({
+        timeout: 120_000,
+      })
       const detection = await readDetection(page, fileName)
+      expect(detection.cropConfirmed).toBe(false)
 
       if (!scenario.expected) {
         expect(detection.confidence).toBeLessThan(DETECTION_CONFIDENCE_THRESHOLD)
+        expect(detection.cornerSource).toBe('fallback')
         expect(detection.corners).toEqual([
           { x: 0.04, y: 0.04 },
           { x: 0.96, y: 0.04 },
@@ -130,10 +179,12 @@ test('detects difficult document edges and rejects scenes without a document', a
       }
 
       expect(detection.confidence).toBeGreaterThanOrEqual(DETECTION_CONFIDENCE_THRESHOLD)
-      const errors = detection.corners.map((corner, index) => Math.hypot(
-        corner.x * 1200 - scenario.expected![index][0],
-        corner.y * 900 - scenario.expected![index][1],
-      ) / 1500)
+      expect(detection.cornerSource).toBe('detected')
+      const errors = detection.corners.map(
+        (corner, index) =>
+          Math.hypot(corner.x * 1200 - scenario.expected![index][0], corner.y * 900 - scenario.expected![index][1]) /
+          1500,
+      )
       const meanError = errors.reduce((sum, error) => sum + error, 0) / errors.length
       expect(meanError).toBeLessThanOrEqual(scenario.meanLimit!)
       expect(Math.max(...errors)).toBeLessThanOrEqual(scenario.maxLimit!)
@@ -154,9 +205,12 @@ test('keeps the image worker stable across ten consecutive detections', async ({
       mimeType: 'image/png',
       buffer,
     })
-    await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+    await expect(page.getByText('确认四个角点')).toBeVisible({
+      timeout: 120_000,
+    })
     const detection = await readDetection(page, fileName)
     expect(detection.confidence).toBeGreaterThanOrEqual(DETECTION_CONFIDENCE_THRESHOLD)
+    expect(detection.cornerSource).toBe('detected')
     if (index < 9) {
       await page.getByRole('button', { name: '添加页面' }).click()
       await expect(page.getByRole('heading', { name: '添加文档页面' })).toBeVisible()

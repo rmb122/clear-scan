@@ -46,9 +46,14 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '添加文档页面' })).toBeVisible()
   const upload = page.locator('input[type="file"]').nth(1)
   await upload.setInputFiles(path.resolve('e2e/fixtures/document.png'))
-  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByText('已自动找到边缘')).toBeVisible()
+  await expect(page.getByText('确认四个角点')).toBeVisible({
+    timeout: 120_000,
+  })
+  await expect(page.getByText('已预识别边缘，请人工确认')).toBeVisible()
+  await expect(page.getByText('预识别结果待确认')).toBeVisible()
+  await expect(page.getByText('自动识别完成')).toHaveCount(0)
   await expect(page.getByText('确认文档边缘', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '导出' })).toBeDisabled()
   const storageShape = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('clear-scan-db')
@@ -74,13 +79,36 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   })
   expect(storageShape).toEqual({ isBlob: false, hasArrayBuffer: true })
   await page.getByRole('button', { name: '确认裁剪' }).click()
-  await expect(page.getByText('调整扫描效果')).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByRole('button', { name: '导出' })).toBeEnabled()
+  await expect(page.getByText('调整扫描效果')).toBeVisible({
+    timeout: 120_000,
+  })
+  const workspace = page.locator('section.paper-grid')
+  const loading = page.getByRole('status')
+  await expect(loading).toBeVisible()
+  const [workspaceBox, loadingContentBox] = await Promise.all([
+    workspace.boundingBox(),
+    loading.locator(':scope > div').boundingBox(),
+  ])
+  expect(workspaceBox).not.toBeNull()
+  expect(loadingContentBox).not.toBeNull()
+  expect(
+    Math.abs(loadingContentBox!.x + loadingContentBox!.width / 2 - (workspaceBox!.x + workspaceBox!.width / 2)),
+  ).toBeLessThanOrEqual(1)
+  expect(
+    Math.abs(loadingContentBox!.y + loadingContentBox!.height / 2 - (workspaceBox!.y + workspaceBox!.height / 2)),
+  ).toBeLessThanOrEqual(1)
+  await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({
+    timeout: 120_000,
+  })
   await expect(page.getByText(/检测到(?:轻微反光|明显过曝区域)/)).toHaveCount(0)
   const shadow = page.getByRole('button', { name: '标准去阴影', exact: true })
   const glare = page.getByRole('button', { name: '去反光', exact: true })
   const sharpen = page.getByRole('button', { name: '加锐', exact: true })
-  const enhancedColor = page.getByRole('button', { name: '彩色增强', exact: true })
+  const enhancedColor = page.getByRole('button', {
+    name: '彩色增强',
+    exact: true,
+  })
   const blackWhite = page.getByRole('button', { name: '黑白', exact: true })
   await expect(shadow).toHaveAttribute('aria-pressed', 'true')
   await expect(glare).toHaveAttribute('aria-pressed', 'true')
@@ -104,7 +132,9 @@ test('scan history can clear all local projects', async ({ page }, testInfo) => 
   test.skip(testInfo.project.name !== 'desktop-chromium', 'One storage cleanup run is enough')
   await page.goto('/scan/document')
   await page.locator('input[type="file"]').nth(1).setInputFiles(path.resolve('e2e/fixtures/document.png'))
-  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText('确认四个角点')).toBeVisible({
+    timeout: 120_000,
+  })
 
   await page.goto('/history')
   const clearButton = page.getByRole('button', { name: '清空所有历史数据' })

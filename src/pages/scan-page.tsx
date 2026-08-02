@@ -21,7 +21,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { bulkPutPages, db, getProjectWithPages, putPage } from '@/lib/db'
-import { DETECTION_CONFIDENCE_THRESHOLD } from '@/lib/document-detection'
 import { DEFAULT_QUAD } from '@/lib/geometry'
 import { scannerClient } from '@/lib/scanner-client'
 import {
@@ -43,6 +42,13 @@ import { useAppStore } from '@/store/app-store'
 
 type EditorStage = 'capture' | 'crop' | 'enhance'
 
+interface RenderedPreview {
+  pageId: string
+  renderKey: string
+  url: string
+  blob: Blob
+}
+
 function isScanMode(value?: string): value is ScanMode {
   return value === 'id-card' || value === 'passport' || value === 'document'
 }
@@ -56,6 +62,7 @@ async function fallbackDetection(source: Blob): Promise<DetectionResult> {
     height: bitmap.height,
     corners: DEFAULT_QUAD.map((point) => ({ ...point })) as typeof DEFAULT_QUAD,
     confidence: 0,
+    cornerSource: 'fallback',
     glareLevel: 'none',
   }
   bitmap.close()
@@ -65,8 +72,7 @@ async function fallbackDetection(source: Blob): Promise<DetectionResult> {
 export function ScanPage() {
   const { mode: routeMode, projectId } = useParams()
   const navigate = useNavigate()
-  const loadedProjectId = useRef<string | undefined>(undefined)
-  const previewUrlRef = useRef<string | undefined>(undefined)
+  const previewRef = useRef<RenderedPreview | undefined>(undefined)
   const workspaceRef = useRef<HTMLElement | null>(null)
   const [project, setProject] = useState<ScanProject>()
   const [pages, setPages] = useState<ScanPageModel[]>([])
@@ -76,14 +82,22 @@ export function ScanPage() {
   const [busy, setBusy] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [sourceUrl, setSourceUrl] = useState<string>()
-  const [previewUrl, setPreviewUrl] = useState<string>()
-  const [previewBlob, setPreviewBlob] = useState<Blob>()
+  const [preview, setPreview] = useState<RenderedPreview>()
   const activeRef = useRef<ScanPageModel | undefined>(undefined)
   const projectRef = useRef<ScanProject | undefined>(undefined)
   const engineProgress = useAppStore((state) => state.engineProgress)
   const engineLabel = useAppStore((state) => state.engineLabel)
   const activeSource = active?.source
   const activePageId = active?.id
+  const activeRenderKey = useMemo(
+    () =>
+      active
+        ? JSON.stringify([active.id, active.corners, active.rotation, active.effects, active.adjustments])
+        : undefined,
+    [active],
+  )
+  const activePreview = preview?.pageId === activePageId ? preview : undefined
+  const previewIsCurrent = Boolean(activePreview && activeRenderKey && activePreview.renderKey === activeRenderKey)
 
   const mode: ScanMode = project?.mode ?? (isScanMode(routeMode) ? routeMode : 'document')
   const sortedPages = useMemo(() => [...pages].sort((a, b) => a.order - b.order), [pages])
@@ -123,27 +137,36 @@ export function ScanPage() {
 
   useEffect(() => {
     if (projectId) {
-      if (loadedProjectId.current === projectId) return
-      loadedProjectId.current = projectId
-      void getProjectWithPages(projectId).then(({ project: storedProject, pages: storedPages }) => {
-        if (!storedProject) {
-          toast.error('找不到这个扫描项目')
+      let cancelled = false
+      void getProjectWithPages(projectId)
+        .then(({ project: storedProject, pages: storedPages }) => {
+          if (cancelled) return
+          if (!storedProject) {
+            toast.error('找不到这个扫描项目')
+            navigate('/history', { replace: true })
+            return
+          }
+          setProject(storedProject)
+          setPages(storedPages)
+          setPassportLayoutState(storedProject.passportLayout ?? 'data-page')
+          if (storedPages.length) {
+            setActive(storedPages[0])
+            setStage(storedPages[0].cropConfirmed ? 'enhance' : 'crop')
+          } else {
+            setStage('capture')
+          }
+        })
+        .catch((reason: unknown) => {
+          if (cancelled) return
+          toast.error('扫描项目读取失败', {
+            description: reason instanceof Error ? reason.message : '浏览器无法读取本地存储',
+          })
           navigate('/history', { replace: true })
-          return
-        }
-        setProject(storedProject)
-        setPages(storedPages)
-        setPassportLayoutState(storedProject.passportLayout ?? 'data-page')
-        if (storedPages.length) {
-          setActive(storedPages[0])
-          setStage('enhance')
-        } else {
-          setStage('capture')
-        }
-      })
-      return
+        })
+      return () => {
+        cancelled = true
+      }
     }
-    loadedProjectId.current = undefined
     setProject(undefined)
     setPages([])
     setActive(undefined)
@@ -161,30 +184,40 @@ export function ScanPage() {
     return () => URL.revokeObjectURL(url)
   }, [activeSource])
 
-  const replacePreview = useCallback((url?: string, blob?: Blob) => {
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
-    previewUrlRef.current = url
-    setPreviewUrl(url)
-    setPreviewBlob(blob)
+  const replacePreview = useCallback((next?: RenderedPreview) => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current.url)
+    previewRef.current = next
+    setPreview(next)
   }, [])
+
+  useEffect(() => {
+    if (previewRef.current?.pageId !== activePageId) replacePreview()
+    setRendering(false)
+  }, [activePageId, replacePreview])
 
   useEffect(
     () => () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current.url)
     },
     [],
   )
 
   useEffect(() => {
-    if (!active || stage !== 'enhance') return
+    const page = activeRef.current
+    if (!page || !activeRenderKey || stage !== 'enhance') return
     let cancelled = false
     const timer = window.setTimeout(() => {
       setRendering(true)
       void scannerClient
-        .render(active, { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 })
+        .render(page, { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 })
         .then(({ blob }) => {
           if (cancelled) return
-          replacePreview(URL.createObjectURL(blob), blob)
+          replacePreview({
+            pageId: page.id,
+            renderKey: activeRenderKey,
+            url: URL.createObjectURL(blob),
+            blob,
+          })
         })
         .catch((reason: unknown) => {
           if (!cancelled)
@@ -198,7 +231,7 @@ export function ScanPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [active, replacePreview, stage])
+  }, [activeRenderKey, activeSource, replacePreview, stage])
 
   useEffect(() => {
     if (!active || !project) return
@@ -228,7 +261,6 @@ export function ScanPage() {
     }
     await db.projects.put(created)
     setProject(created)
-    loadedProjectId.current = created.id
     navigate(`/project/${created.id}`, { replace: true })
     return created
   }
@@ -265,6 +297,8 @@ export function ScanPage() {
           height: detection.height,
           corners: detection.corners,
           confidence: detection.confidence,
+          cornerSource: detection.cornerSource,
+          cropConfirmed: false,
           glareLevel: detection.glareLevel,
           rotation: 0,
           effects: { ...SMART_EFFECTS },
@@ -292,7 +326,6 @@ export function ScanPage() {
       })
       setPages(workingPages)
       if (added[0]) {
-        replacePreview(undefined, undefined)
         setActive(added[0])
         setStage('crop')
       }
@@ -309,7 +342,7 @@ export function ScanPage() {
     if (!active || !project) return
     const saved = {
       ...active,
-      thumbnail: previewBlob ?? active.thumbnail,
+      thumbnail: previewIsCurrent && activePreview ? activePreview.blob : active.thumbnail,
       updatedAt: Date.now(),
     }
     await putPage(saved)
@@ -320,7 +353,6 @@ export function ScanPage() {
     toast.success('页面已保存到本地')
     if (mode === 'id-card' && !nextPages.some((page) => page.role === (saved.role === 'front' ? 'back' : 'front'))) {
       setActive(undefined)
-      replacePreview(undefined, undefined)
       setStage('capture')
       toast('请继续拍摄身份证另一面')
     }
@@ -362,7 +394,7 @@ export function ScanPage() {
     setPages(remaining)
     if (active?.id === page.id) {
       setActive(remaining[0])
-      setStage(remaining.length ? 'enhance' : 'capture')
+      setStage(remaining.length ? (remaining[0].cropConfirmed ? 'enhance' : 'crop') : 'capture')
     }
     toast.success('页面已删除')
   }
@@ -385,10 +417,14 @@ export function ScanPage() {
 
   const redetect = async () => {
     if (!active) return
+    const pageId = active.id
     setBusy(true)
     try {
       const detection = await scannerClient.detect(active.source, mode, passportLayout)
-      setActive({ ...active, ...detection, updatedAt: Date.now() })
+      if (activeRef.current?.id !== pageId) return
+      setActive((current) =>
+        current?.id === pageId ? { ...current, ...detection, cropConfirmed: false, updatedAt: Date.now() } : current,
+      )
       toast.success('已重新识别边缘')
     } catch (reason) {
       toast.error('重新识别失败', {
@@ -417,15 +453,14 @@ export function ScanPage() {
 
   const selectPage = (page: ScanPageModel) => {
     const nextPages = flushActivePage()
-    replacePreview(undefined, undefined)
-    setActive(nextPages.find((item) => item.id === page.id) ?? page)
-    setStage('enhance')
+    const selected = nextPages.find((item) => item.id === page.id) ?? page
+    setActive(selected)
+    setStage(selected.cropConfirmed ? 'enhance' : 'crop')
   }
 
   const startCapture = () => {
     flushActivePage()
     setActive(undefined)
-    replacePreview(undefined, undefined)
     setStage('capture')
   }
 
@@ -455,6 +490,39 @@ export function ScanPage() {
       adjustments: { ...DEFAULT_ADJUSTMENTS },
       updatedAt: Date.now(),
     })
+  }
+
+  const confirmCrop = () => {
+    if (!active) return
+    const confirmed = { ...active, cropConfirmed: true, updatedAt: Date.now() }
+    setActive(confirmed)
+    void putPage(confirmed).catch((reason: unknown) => {
+      if (activeRef.current?.id === confirmed.id) {
+        replacePreview()
+        setActive((current) => (current?.id === confirmed.id ? { ...current, cropConfirmed: false } : current))
+        setStage('crop')
+      }
+      toast.error('裁剪确认保存失败', {
+        id: 'crop-confirmation-save-error',
+        description: reason instanceof Error ? reason.message : '浏览器无法写入本地存储',
+      })
+    })
+    setStage('enhance')
+  }
+
+  const reopenCrop = () => {
+    if (!active) return
+    const unconfirmed = { ...active, cropConfirmed: false, updatedAt: Date.now() }
+    replacePreview()
+    setRendering(false)
+    setActive(unconfirmed)
+    void putPage(unconfirmed).catch((reason: unknown) => {
+      toast.error('裁剪状态保存失败', {
+        id: 'crop-confirmation-save-error',
+        description: reason instanceof Error ? reason.message : '浏览器无法写入本地存储',
+      })
+    })
+    setStage('crop')
   }
 
   return (
@@ -581,37 +649,40 @@ export function ScanPage() {
                     width={active.width}
                     height={active.height}
                     corners={active.corners}
-                    confidence={active.confidence}
+                    cornerSource={active.cornerSource}
                     onChange={(corners) =>
                       setActive({
                         ...active,
                         corners,
-                        confidence: 1,
+                        cornerSource: 'manual',
+                        cropConfirmed: false,
                         updatedAt: Date.now(),
                       })
                     }
                   />
                 )}
-                {stage === 'enhance' && active && (
-                  <div className="flex size-full items-center justify-center p-4 sm:p-8">
-                    {previewUrl ? (
+                {stage === 'enhance' &&
+                  active &&
+                  (activePreview ? (
+                    <div className="flex size-full items-center justify-center p-4 sm:p-8">
                       <img
-                        src={previewUrl}
+                        src={activePreview.url}
                         alt="扫描增强预览"
                         className={cn(
                           'max-h-full max-w-full object-contain shadow-[0_20px_65px_rgba(0,0,0,.5)] transition-opacity',
-                          rendering && 'opacity-55',
+                          (rendering || !previewIsCurrent) && 'opacity-55',
                         )}
                       />
-                    ) : (
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center p-4" role="status" aria-live="polite">
                       <div className="flex flex-col items-center gap-3 text-white/75">
                         <LoaderCircle className="size-8 animate-spin" />
                         <span className="text-xs font-semibold">正在生成增强预览</span>
                       </div>
-                    )}
-                  </div>
-                )}
-                {rendering && previewUrl && (
+                    </div>
+                  ))}
+                {(rendering || !previewIsCurrent) && activePreview && (
                   <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-semibold text-white backdrop-blur">
                     <LoaderCircle className="size-3 animate-spin" />
                     正在更新效果
@@ -623,8 +694,18 @@ export function ScanPage() {
                 {stage === 'crop' && active && (
                   <div className="space-y-5">
                     <div>
-                      <Badge>
-                        {active.confidence >= DETECTION_CONFIDENCE_THRESHOLD ? '自动识别完成' : '需要手动确认'}
+                      <Badge
+                        variant={
+                          active.cornerSource === 'detected' || active.cornerSource === 'manual' ? 'default' : 'warning'
+                        }
+                      >
+                        {active.cornerSource === 'detected'
+                          ? '预识别结果待确认'
+                          : active.cornerSource === 'manual'
+                            ? '已手动调整，等待确认'
+                            : active.cornerSource === 'fallback'
+                              ? '需要手动调整'
+                              : '需要人工确认'}
                       </Badge>
                       <h2 className="mt-3 text-xl font-bold">确认四个角点</h2>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -643,7 +724,7 @@ export function ScanPage() {
                       <RotateCcw />
                       重新识别
                     </Button>
-                    <Button size="lg" className="w-full" onClick={() => setStage('enhance')}>
+                    <Button size="lg" className="w-full" onClick={confirmCrop}>
                       <Check />
                       确认裁剪
                     </Button>
@@ -679,11 +760,11 @@ export function ScanPage() {
                       }
                     />
                     <div className="mt-6 grid grid-cols-2 gap-2">
-                      <Button variant="outline" onClick={() => setStage('crop')}>
+                      <Button variant="outline" onClick={reopenCrop}>
                         <Crop />
                         调整边缘
                       </Button>
-                      <Button onClick={() => void saveActive()}>
+                      <Button disabled={!previewIsCurrent || rendering} onClick={() => void saveActive()}>
                         <FileCheck2 />
                         保存页面
                       </Button>

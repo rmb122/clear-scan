@@ -28,6 +28,8 @@ describe('local scan repository', () => {
       height: 140,
       corners: DEFAULT_QUAD,
       confidence: 0.8,
+      cornerSource: 'detected',
+      cropConfirmed: false,
       glareLevel: 'none',
       rotation: 0,
       effects: { ...SMART_EFFECTS },

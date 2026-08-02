@@ -664,6 +664,7 @@ async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, pass
       height: sourceHeight,
       corners: accepted && detection.best ? detection.best.corners : fallback,
       confidence: detection.confidence,
+      cornerSource: accepted ? 'detected' : 'fallback',
       glareLevel: detectGlare(cv, source),
     }
     post({ id, type: 'progress', progress: 100, label: '边缘识别完成' })
