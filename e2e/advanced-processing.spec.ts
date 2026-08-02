@@ -5,7 +5,9 @@ async function waitForPreviewChange(page: Page, previous?: string | null) {
   const image = page.getByRole('img', { name: '扫描增强预览' })
   await expect(image).toBeVisible({ timeout: 120_000 })
   if (previous) await expect.poll(() => image.getAttribute('src')).not.toBe(previous)
-  await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true)
+  await expect
+    .poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0))
+    .toBe(true)
   return image.getAttribute('src')
 }
 
@@ -65,12 +67,17 @@ async function createShadowFixture(page: Page) {
 test('standard shadow removal flattens cast shadows while retaining ink contrast', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'One image-engine run is enough')
   await page.goto('/scan/document')
-  await page.locator('input[type="file"]').nth(1).setInputFiles({
-    name: 'synthetic-shadow.png',
-    mimeType: 'image/png',
-    buffer: await createShadowFixture(page),
+  await page
+    .locator('input[type="file"]')
+    .nth(1)
+    .setInputFiles({
+      name: 'synthetic-shadow.png',
+      mimeType: 'image/png',
+      buffer: await createShadowFixture(page),
+    })
+  await expect(page.getByText('确认四个角点')).toBeVisible({
+    timeout: 120_000,
   })
-  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await waitForPreviewChange(page)
   await page.getByRole('button', { name: '原版', exact: true }).click()
@@ -91,9 +98,31 @@ test('standard shadow removal flattens cast shadows while retaining ink contrast
 test('installs the FP16 model, saves a correction map, then exports after uninstall', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'The 59 MiB model smoke test runs once')
   test.setTimeout(300_000)
+  const ortModuleRequests: string[] = []
+  const ortWasmResponses: Array<{
+    url: string
+    status: number
+    contentType: string
+  }> = []
+  page.on('request', (request) => {
+    if (/\/ort-wasm[^/]*\.mjs(?:$|\?)/.test(request.url())) {
+      ortModuleRequests.push(request.url())
+    }
+  })
+  page.on('response', (response) => {
+    if (/\/ort-wasm[^/]*\.wasm(?:$|\?)/.test(response.url())) {
+      ortWasmResponses.push({
+        url: response.url(),
+        status: response.status(),
+        contentType: response.headers()['content-type'] ?? '',
+      })
+    }
+  })
   await page.goto('/settings')
   await page.getByRole('button', { name: '安装高级模型' }).click()
-  await expect(page.getByText('已安装', { exact: true })).toBeVisible({ timeout: 240_000 })
+  await expect(page.getByText('已安装', { exact: true })).toBeVisible({
+    timeout: 240_000,
+  })
   const modelState = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('clear-scan-db')
@@ -123,27 +152,46 @@ test('installs the FP16 model, saves a correction map, then exports after uninst
   expect(Number(modelState.benchmarkMs)).toBeGreaterThan(0)
   expect([256, 384, 512]).toContain(modelState.inputSize)
   expect(modelState.bytes).toBe(62_045_318)
+  expect(ortModuleRequests).toEqual([])
+  expect(ortWasmResponses).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        status: 200,
+        contentType: expect.stringContaining('application/wasm'),
+      }),
+    ]),
+  )
 
   await page.goto('/scan/document')
   await page.locator('input[type="file"]').nth(1).setInputFiles(path.resolve('e2e/fixtures/document.png'))
-  await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText('确认四个角点')).toBeVisible({
+    timeout: 120_000,
+  })
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await waitForPreviewChange(page)
   await page.getByRole('button', { name: 'AI 去阴影', exact: true }).click()
-  await expect.poll(async () => page.evaluate(async () => {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('clear-scan-db')
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    })
-    const records = await new Promise<Array<{ advancedCorrection?: { map?: { data?: ArrayBuffer } } }>>((resolve, reject) => {
-      const request = database.transaction('pages').objectStore('pages').getAll()
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    })
-    database.close()
-    return records.some((record) => (record.advancedCorrection?.map?.data?.byteLength ?? 0) > 0)
-  }), { timeout: 180_000 }).toBe(true)
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async () => {
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('clear-scan-db')
+            request.onsuccess = () => resolve(request.result)
+            request.onerror = () => reject(request.error)
+          })
+          const records = await new Promise<Array<{ advancedCorrection?: { map?: { data?: ArrayBuffer } } }>>(
+            (resolve, reject) => {
+              const request = database.transaction('pages').objectStore('pages').getAll()
+              request.onsuccess = () => resolve(request.result)
+              request.onerror = () => reject(request.error)
+            },
+          )
+          database.close()
+          return records.some((record) => (record.advancedCorrection?.map?.data?.byteLength ?? 0) > 0)
+        }),
+      { timeout: 180_000 },
+    )
+    .toBe(true)
   await page.getByRole('button', { name: '保存页面' }).click()
   const projectUrl = page.url()
 

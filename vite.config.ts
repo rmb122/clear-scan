@@ -16,14 +16,6 @@ export default defineConfig({
           dest: 'vendor',
           rename: { stripBase: true },
         },
-        {
-          src: [
-            'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.{mjs,wasm}',
-            'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.{mjs,wasm}',
-          ],
-          dest: 'vendor/ort',
-          rename: { stripBase: true },
-        },
       ],
     }),
     VitePWA({
@@ -73,14 +65,10 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
-        globIgnores: [
-          '**/models/**',
-          '**/vendor/ort/**',
-          '**/ort-wasm*.wasm',
-        ],
+        globIgnores: ['**/models/**', '**/ort-wasm*.wasm'],
         runtimeCaching: [
           {
-            urlPattern: /\/vendor\/ort\/.*\.(?:wasm|mjs)$/,
+            urlPattern: /\/ort-wasm[^/]*\.wasm$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'clear-scan-ort-runtime',
@@ -95,7 +83,9 @@ export default defineConfig({
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
     },
-    conditions: ['onnxruntime-web-use-extern-wasm'],
+  },
+  optimizeDeps: {
+    include: ['onnxruntime-web/wasm', 'onnxruntime-web/webgpu'],
   },
   worker: {
     format: 'es',

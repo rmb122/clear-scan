@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { CV, Mat } from '@techstark/opencv-js'
+import * as ortWasm from 'onnxruntime-web/wasm'
 import {
   calibrateDetectionConfidence,
   deduplicateCandidates,
@@ -35,8 +36,9 @@ const workerScope = self as unknown as DedicatedWorkerGlobalScope & {
 }
 let cvReadyPromise: Promise<void> | undefined
 let cvRuntime: CV | undefined
-let advancedSession: import('onnxruntime-web').InferenceSession | undefined
-let advancedOrt: typeof import('onnxruntime-web') | undefined
+type OrtRuntime = typeof ortWasm
+let advancedSession: ortWasm.InferenceSession | undefined
+let advancedOrt: OrtRuntime | undefined
 let advancedBackend: AdvancedModelBackend | undefined
 let advancedInputSize: 256 | 384 | 512 = 256
 let advancedBenchmarkMs = 0
@@ -53,20 +55,37 @@ function ensureOpenCv(requestId: string) {
     cvReadyPromise = (async () => {
       const candidate = workerScope.cv as CV | Promise<CV>
       if (!candidate) throw new Error('OpenCV 本地图像引擎载入失败')
-      post({ id: requestId, type: 'progress', progress: 10, label: '正在初始化 OpenCV' })
+      post({
+        id: requestId,
+        type: 'progress',
+        progress: 10,
+        label: '正在初始化 OpenCV',
+      })
       if (candidate instanceof Promise) {
         cvRuntime = await candidate
         return
       }
       const module = candidate as CV
-      const moduleThen = (module as unknown as {
-        then?: (callback: () => void) => unknown
-      }).then
+      const moduleThen = (
+        module as unknown as {
+          then?: (callback: () => void) => unknown
+        }
+      ).then
       if (typeof moduleThen === 'function') {
-        post({ id: requestId, type: 'progress', progress: 14, label: '正在编译图像算法' })
+        post({
+          id: requestId,
+          type: 'progress',
+          progress: 14,
+          label: '正在编译图像算法',
+        })
         await new Promise<void>((resolve) => {
           moduleThen.call(module, () => {
-            post({ id: requestId, type: 'progress', progress: 22, label: 'OpenCV 已就绪' })
+            post({
+              id: requestId,
+              type: 'progress',
+              progress: 22,
+              label: 'OpenCV 已就绪',
+            })
             resolve()
           })
         })
@@ -87,7 +106,9 @@ function ensureOpenCv(requestId: string) {
 }
 
 async function blobToImageData(blob: Blob, maxEdge: number) {
-  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
+  const bitmap = await createImageBitmap(blob, {
+    imageOrientation: 'from-image',
+  })
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
   const width = Math.max(1, Math.round(bitmap.width * scale))
   const height = Math.max(1, Math.round(bitmap.height * scale))
@@ -216,19 +237,17 @@ function addRawCandidate(
   allowOuterMargin = false,
 ) {
   if (corners.length !== 4) return
-  if (allowOuterMargin && corners.some((point) => (
-    point.x < -0.06 || point.x > 1.06 || point.y < -0.06 || point.y > 1.06
-  ))) return
+  if (
+    allowOuterMargin &&
+    corners.some((point) => point.x < -0.06 || point.x > 1.06 || point.y < -0.06 || point.y > 1.06)
+  )
+    return
   const ordered = orderPoints(corners)
   const unique = new Set(ordered.map((point) => `${point.x.toFixed(4)}:${point.y.toFixed(4)}`))
   if (unique.size === 4) candidates.push({ corners: ordered, source })
 }
 
-function collectContourCandidates(
-  cv: CV,
-  edgeMap: Mat,
-  sourceName: DetectionCandidateSource,
-) {
+function collectContourCandidates(cv: CV, edgeMap: Mat, sourceName: DetectionCandidateSource) {
   const hierarchy = new cv.Mat()
   const contours = new cv.MatVector()
   const candidates: RawDetectionCandidate[] = []
@@ -326,7 +345,10 @@ function boundaryContrast(imageData: ImageData, corners: NormalizedQuad) {
   }
   let contrast = 0
   let samples = 0
-  const pixels = corners.map((point) => ({ x: point.x * width, y: point.y * height }))
+  const pixels = corners.map((point) => ({
+    x: point.x * width,
+    y: point.y * height,
+  }))
   for (let side = 0; side < 4; side += 1) {
     const start = pixels[side]
     const end = pixels[(side + 1) % 4]
@@ -353,14 +375,18 @@ function evaluateCandidates(
   imageData: ImageData,
   targetRatio?: number,
 ) {
-  return candidates.map((candidate) => scoreDetectionCandidate({
-    ...candidate,
-    width: edgeMap.cols,
-    height: edgeMap.rows,
-    edgeSupport: edgeSupport(edgeMap, candidate.corners),
-    contrast: boundaryContrast(imageData, candidate.corners),
-    targetRatio,
-  })).filter((candidate) => candidate.score > 0)
+  return candidates
+    .map((candidate) =>
+      scoreDetectionCandidate({
+        ...candidate,
+        width: edgeMap.cols,
+        height: edgeMap.rows,
+        edgeSupport: edgeSupport(edgeMap, candidate.corners),
+        contrast: boundaryContrast(imageData, candidate.corners),
+        targetRatio,
+      }),
+    )
+    .filter((candidate) => candidate.score > 0)
 }
 
 function lineFromPoints(start: Point, end: Point): DetectedLine {
@@ -412,10 +438,7 @@ function extractHoughLines(cv: CV, edgeMap: Mat) {
 
 function linePairSeparation(left: DetectedLine, right: DetectedLine, normalAngle: number) {
   const normal = { x: -Math.sin(normalAngle), y: Math.cos(normalAngle) }
-  return Math.abs(
-    (right.midpoint.x - left.midpoint.x) * normal.x +
-    (right.midpoint.y - left.midpoint.y) * normal.y,
-  )
+  return Math.abs((right.midpoint.x - left.midpoint.x) * normal.x + (right.midpoint.y - left.midpoint.y) * normal.y)
 }
 
 function collectHoughCandidates(lines: DetectedLine[], width: number, height: number) {
@@ -424,18 +447,15 @@ function collectHoughCandidates(lines: DetectedLine[], width: number, height: nu
   const minimumSeparation = Math.min(width, height) * 0.14
   for (const seed of lines.slice(0, 8)) {
     const perpendicular = (seed.angle + Math.PI / 2) % Math.PI
-    const firstFamily = lines
-      .filter((line) => lineAngleDifference(line.angle, seed.angle) <= tolerance)
-      .slice(0, 7)
-    const secondFamily = lines
-      .filter((line) => lineAngleDifference(line.angle, perpendicular) <= tolerance)
-      .slice(0, 7)
+    const firstFamily = lines.filter((line) => lineAngleDifference(line.angle, seed.angle) <= tolerance).slice(0, 7)
+    const secondFamily = lines.filter((line) => lineAngleDifference(line.angle, perpendicular) <= tolerance).slice(0, 7)
     for (let first = 0; first < firstFamily.length; first += 1) {
       for (let opposite = first + 1; opposite < firstFamily.length; opposite += 1) {
         if (linePairSeparation(firstFamily[first], firstFamily[opposite], seed.angle) < minimumSeparation) continue
         for (let second = 0; second < secondFamily.length; second += 1) {
           for (let adjacent = second + 1; adjacent < secondFamily.length; adjacent += 1) {
-            if (linePairSeparation(secondFamily[second], secondFamily[adjacent], perpendicular) < minimumSeparation) continue
+            if (linePairSeparation(secondFamily[second], secondFamily[adjacent], perpendicular) < minimumSeparation)
+              continue
             const points = [
               lineIntersection(firstFamily[first], secondFamily[second]),
               lineIntersection(firstFamily[first], secondFamily[adjacent]),
@@ -445,7 +465,10 @@ function collectHoughCandidates(lines: DetectedLine[], width: number, height: nu
             if (points.some((point) => !point)) continue
             addRawCandidate(
               candidates,
-              (points as Point[]).map((point) => ({ x: point.x / width, y: point.y / height })),
+              (points as Point[]).map((point) => ({
+                x: point.x / width,
+                y: point.y / height,
+              })),
               'hough',
               true,
             )
@@ -462,26 +485,28 @@ function distanceFromLine(point: Point, line: LineEquation) {
   return Math.abs(line.a * point.x + line.b * point.y + line.c) / Math.max(0.001, Math.hypot(line.a, line.b))
 }
 
-function refineCandidateWithLines(
-  candidate: DetectionCandidate,
-  lines: DetectedLine[],
-  width: number,
-  height: number,
-) {
-  const pixels = candidate.corners.map((point) => ({ x: point.x * width, y: point.y * height }))
+function refineCandidateWithLines(candidate: DetectionCandidate, lines: DetectedLine[], width: number, height: number) {
+  const pixels = candidate.corners.map((point) => ({
+    x: point.x * width,
+    y: point.y * height,
+  }))
   const band = Math.max(width, height) * 0.04
   const selected = pixels.map((start, index) => {
     const end = pixels[(index + 1) % 4]
     const original = lineFromPoints(start, end)
-    return lines
-      .filter((line) => (
-        lineAngleDifference(line.angle, original.angle) < Math.PI / 15 &&
-        distanceFromLine(line.midpoint, original) < band
-      ))
-      .sort((left, right) => (
-        right.length / (1 + distanceFromLine(right.midpoint, original)) -
-        left.length / (1 + distanceFromLine(left.midpoint, original))
-      ))[0] ?? original
+    return (
+      lines
+        .filter(
+          (line) =>
+            lineAngleDifference(line.angle, original.angle) < Math.PI / 15 &&
+            distanceFromLine(line.midpoint, original) < band,
+        )
+        .sort(
+          (left, right) =>
+            right.length / (1 + distanceFromLine(right.midpoint, original)) -
+            left.length / (1 + distanceFromLine(left.midpoint, original)),
+        )[0] ?? original
+    )
   })
   const refined = [
     lineIntersection(selected[3], selected[0]),
@@ -490,8 +515,12 @@ function refineCandidateWithLines(
     lineIntersection(selected[2], selected[3]),
   ]
   if (refined.some((point) => !point)) return undefined
-  const normalized = (refined as Point[]).map((point) => ({ x: point.x / width, y: point.y / height }))
-  if (normalized.some((point) => point.x < -0.04 || point.x > 1.04 || point.y < -0.04 || point.y > 1.04)) return undefined
+  const normalized = (refined as Point[]).map((point) => ({
+    x: point.x / width,
+    y: point.y / height,
+  }))
+  if (normalized.some((point) => point.x < -0.04 || point.x > 1.04 || point.y < -0.04 || point.y > 1.04))
+    return undefined
   return orderPoints(normalized)
 }
 
@@ -526,25 +555,40 @@ function findDocumentQuad(
 
     edgeMaps.push(
       { mat: createCannyMap(cv, gray, kernel), source: 'canny' },
-      { mat: createCannyMap(cv, normalized, kernel), source: 'normalized-canny' },
-      { mat: createAdaptiveEdgeMap(cv, enhanced, kernel, false), source: 'adaptive-light' },
-      { mat: createAdaptiveEdgeMap(cv, enhanced, kernel, true), source: 'adaptive-dark' },
+      {
+        mat: createCannyMap(cv, normalized, kernel),
+        source: 'normalized-canny',
+      },
+      {
+        mat: createAdaptiveEdgeMap(cv, enhanced, kernel, false),
+        source: 'adaptive-light',
+      },
+      {
+        mat: createAdaptiveEdgeMap(cv, enhanced, kernel, true),
+        source: 'adaptive-dark',
+      },
     )
     combined = cv.Mat.zeros(source.rows, source.cols, cv.CV_8UC1)
     for (const edgeMap of edgeMaps) cv.bitwise_or(combined, edgeMap.mat, combined)
 
-    if (requestId) post({ id: requestId, type: 'progress', progress: 68, label: '正在评分轮廓候选' })
-    const rawCandidates = edgeMaps.flatMap((edgeMap) => (
-      collectContourCandidates(cv, edgeMap.mat, edgeMap.source)
-    ))
+    if (requestId)
+      post({
+        id: requestId,
+        type: 'progress',
+        progress: 68,
+        label: '正在评分轮廓候选',
+      })
+    const rawCandidates = edgeMaps.flatMap((edgeMap) => collectContourCandidates(cv, edgeMap.mat, edgeMap.source))
     const targetRatio = expectedRatio(mode, passportLayout)
     let evaluatedCandidates = evaluateCandidates(rawCandidates, combined, imageData, targetRatio)
-    let candidates = suppressNestedCandidates(deduplicateCandidates(
-      evaluatedCandidates,
-      source.cols,
-      source.rows,
-    ))
-    if (requestId) post({ id: requestId, type: 'progress', progress: 82, label: '正在补全缺失边线' })
+    let candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
+    if (requestId)
+      post({
+        id: requestId,
+        type: 'progress',
+        progress: 82,
+        label: '正在补全缺失边线',
+      })
     const houghLines = extractHoughLines(cv, combined)
     const initialConfidence = calibrateDetectionConfidence(candidates[0], candidates[1])
     if (!candidates[0] || candidates[0].score < 0.74 || initialConfidence < 0.72) {
@@ -557,16 +601,18 @@ function findDocumentQuad(
           targetRatio,
         ),
       ]
-      candidates = suppressNestedCandidates(deduplicateCandidates(
-        evaluatedCandidates,
-        source.cols,
-        source.rows,
-      ))
+      candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
     }
 
     const best = candidates[0]
     if (best) {
-      if (requestId) post({ id: requestId, type: 'progress', progress: 91, label: '正在精修文档四角' })
+      if (requestId)
+        post({
+          id: requestId,
+          type: 'progress',
+          progress: 91,
+          label: '正在精修文档四角',
+        })
       const refinedCorners = refineCandidateWithLines(best, houghLines, source.cols, source.rows)
       if (refinedCorners) {
         const refined = evaluateCandidates(
@@ -575,17 +621,9 @@ function findDocumentQuad(
           imageData,
           targetRatio,
         )[0]
-        if (
-          refined &&
-          refined.score >= best.score - 0.015 &&
-          refined.edgeSupport >= best.edgeSupport - 0.04
-        ) {
+        if (refined && refined.score >= best.score - 0.015 && refined.edgeSupport >= best.edgeSupport - 0.04) {
           evaluatedCandidates = [refined, ...evaluatedCandidates]
-          candidates = suppressNestedCandidates(deduplicateCandidates(
-            evaluatedCandidates,
-            source.cols,
-            source.rows,
-          ))
+          candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
         }
       }
     }
@@ -641,12 +679,7 @@ function detectGlare(imageData: ImageData): GlareLevel {
   return 'none'
 }
 
-async function detectDocument(
-  id: string,
-  sourceBlob: Blob,
-  mode: ScanMode,
-  passportLayout?: PassportLayout,
-) {
+async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, passportLayout?: PassportLayout) {
   post({ id, type: 'progress', progress: 8, label: '正在载入本地图像引擎' })
   await ensureOpenCv(id)
   const cv = cvRuntime
@@ -657,9 +690,7 @@ async function detectDocument(
   try {
     post({ id, type: 'progress', progress: 54, label: '正在比较多种边缘候选' })
     const detection = findDocumentQuad(cv, source, imageData, mode, passportLayout, id)
-    const accepted = Boolean(
-      detection.best && detection.confidence >= DETECTION_CONFIDENCE_THRESHOLD,
-    )
+    const accepted = Boolean(detection.best && detection.confidence >= DETECTION_CONFIDENCE_THRESHOLD)
     const fallback = orderPoints([
       { x: 0.04, y: 0.04 },
       { x: 0.96, y: 0.04 },
@@ -684,11 +715,7 @@ function rotateMat(cv: CV, source: Mat, rotation: ScanPage['rotation']) {
   if (rotation === 0) return source.clone()
   const output = new cv.Mat()
   const rotateCode =
-    rotation === 90
-      ? cv.ROTATE_90_CLOCKWISE
-      : rotation === 180
-        ? cv.ROTATE_180
-        : cv.ROTATE_90_COUNTERCLOCKWISE
+    rotation === 90 ? cv.ROTATE_90_CLOCKWISE : rotation === 180 ? cv.ROTATE_180 : cv.ROTATE_90_COUNTERCLOCKWISE
   cv.rotate(source, output, rotateCode)
   return output
 }
@@ -726,8 +753,16 @@ function applyToneAdjustments(
     const saturationBoost = preset === 'vivid' ? 1.34 : preset === 'smart' ? 1.05 : 1
     const gray = light
     data[index] = clamp(((gray + (red - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness, 0, 255)
-    data[index + 1] = clamp(((gray + (green - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness, 0, 255)
-    data[index + 2] = clamp(((gray + (blue - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness, 0, 255)
+    data[index + 1] = clamp(
+      ((gray + (green - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness,
+      0,
+      255,
+    )
+    data[index + 2] = clamp(
+      ((gray + (blue - gray) * saturationBoost) * gain - 128) * contrast + 128 + brightness,
+      0,
+      255,
+    )
   }
 }
 
@@ -777,11 +812,7 @@ function estimatePaperIllumination(cv: CV, source: Mat) {
     const combined = closes[0].clone()
     for (let index = 0; index < combined.data.length; index += 1) {
       // The large scale bridges broad cast shadows; the smaller scales reduce edge halos.
-      combined.data[index] = Math.max(
-        closes[0].data[index] * 0.94,
-        closes[1].data[index] * 0.98,
-        closes[2].data[index],
-      )
+      combined.data[index] = Math.max(closes[0].data[index] * 0.94, closes[1].data[index] * 0.98, closes[2].data[index])
     }
     const blurSize = scaledOdd(shortSide / 22, 9, 41)
     cv.GaussianBlur(combined, smooth, new cv.Size(blurSize, blurSize), 0)
@@ -798,12 +829,7 @@ function estimatePaperIllumination(cv: CV, source: Mat) {
   }
 }
 
-function applyClassicalShadowRemoval(
-  cv: CV,
-  source: Mat,
-  preset: FilterPreset,
-  shadowStrength: number,
-) {
+function applyClassicalShadowRemoval(cv: CV, source: Mat, preset: FilterPreset, shadowStrength: number) {
   const illumination = estimatePaperIllumination(cv, source)
   const gray = new cv.Mat()
   try {
@@ -814,11 +840,12 @@ function applyClassicalShadowRemoval(
     // A flat page should remain flat. This prevents needless colour and exposure shifts.
     if (variation < 7) return
     const normalizedStrength = clamp(shadowStrength, 0, 100) / 100
-    const blend = preset === 'black-white'
-      ? 0.96
-      : preset === 'deshadow'
-        ? 0.55 + normalizedStrength * 0.4
-        : 0.28 + normalizedStrength * 0.32
+    const blend =
+      preset === 'black-white'
+        ? 0.96
+        : preset === 'deshadow'
+          ? 0.55 + normalizedStrength * 0.4
+          : 0.28 + normalizedStrength * 0.32
     const target = Math.max(paper, variation > 22 && paper < 184 ? 184 : paper)
     const pixels = source.data
     for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
@@ -836,12 +863,7 @@ function applyClassicalShadowRemoval(
   }
 }
 
-function processFilter(
-  cv: CV,
-  source: Mat,
-  preset: FilterPreset,
-  adjustments: EnhancementSettings,
-) {
+function processFilter(cv: CV, source: Mat, preset: FilterPreset, adjustments: EnhancementSettings) {
   const output = source.clone()
   const gray = new cv.Mat()
   const background = new cv.Mat()
@@ -886,22 +908,17 @@ function processFilter(
         const kernelSize = base % 2 === 0 ? base + 1 : base
         cv.GaussianBlur(gray, background, new cv.Size(kernelSize, kernelSize), 0)
       }
-      applyToneAdjustments(
-        output,
-        gray.data,
-        background.empty() ? undefined : background.data,
-        preset,
-        adjustments,
-      )
+      applyToneAdjustments(output, gray.data, background.empty() ? undefined : background.data, preset, adjustments)
     }
 
-    const presetSharpness = preset === 'sharpen'
-      ? 0.9
-      : preset === 'smart'
-        ? 0.3
-        : preset === 'deshadow' || preset === 'ai-deshadow'
-          ? 0.2
-          : 0
+    const presetSharpness =
+      preset === 'sharpen'
+        ? 0.9
+        : preset === 'smart'
+          ? 0.3
+          : preset === 'deshadow' || preset === 'ai-deshadow'
+            ? 0.2
+            : 0
     const amount = presetSharpness + adjustments.sharpness / 180
     if (amount > 0.03) {
       const blur = new cv.Mat()
@@ -952,7 +969,9 @@ async function runAdvancedTensor(input: Uint16Array, width: number, height: numb
   if (!advancedSession || !advancedOrt) throw new Error('高级去阴影模型尚未启动')
   const tensor = new advancedOrt.Tensor('float16', input, [1, 3, height, width])
   try {
-    const result = await advancedSession.run({ [advancedSession.inputNames[0]]: tensor })
+    const result = await advancedSession.run({
+      [advancedSession.inputNames[0]]: tensor,
+    })
     const output = result[advancedSession.outputNames[0]]
     const values = new Float32Array(width * height * 3)
     const data = output.data
@@ -1005,9 +1024,7 @@ function boxBlur(values: Float32Array, width: number, height: number, radius: nu
 }
 
 function correctionFingerprint(page: ScanPage) {
-  const corners = page.corners
-    .map((point) => `${point.x.toFixed(5)},${point.y.toFixed(5)}`)
-    .join(';')
+  const corners = page.corners.map((point) => `${point.x.toFixed(5)},${point.y.toFixed(5)}`).join(';')
   return `v1:${page.id}:${page.sourceName}:${page.source.size}:${page.rotation}:${corners}`
 }
 
@@ -1019,13 +1036,11 @@ async function createAdvancedCorrection(page: ScanPage, source: Mat): Promise<Ad
   const sourceCanvas = new OffscreenCanvas(source.cols, source.rows)
   const sourceContext = sourceCanvas.getContext('2d')
   const modelCanvas = new OffscreenCanvas(width, height)
-  const modelContext = modelCanvas.getContext('2d', { willReadFrequently: true })
+  const modelContext = modelCanvas.getContext('2d', {
+    willReadFrequently: true,
+  })
   if (!sourceContext || !modelContext) throw new Error('无法准备高级去阴影输入')
-  sourceContext.putImageData(
-    new ImageData(new Uint8ClampedArray(source.data), source.cols, source.rows),
-    0,
-    0,
-  )
+  sourceContext.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.cols, source.rows), 0, 0)
   modelContext.drawImage(sourceCanvas, 0, 0, width, height)
   const pixels = modelContext.getImageData(0, 0, width, height).data
   const plane = width * height
@@ -1040,9 +1055,7 @@ async function createAdvancedCorrection(page: ScanPage, source: Mat): Promise<Ad
   const inferenceMs = performance.now() - started
   const logs = [new Float32Array(plane), new Float32Array(plane), new Float32Array(plane)]
   for (let pixel = 0, offset = 0; pixel < plane; pixel += 1, offset += 4) {
-    const originalLuma = (
-      pixels[offset] * 0.299 + pixels[offset + 1] * 0.587 + pixels[offset + 2] * 0.114
-    ) / 255
+    const originalLuma = (pixels[offset] * 0.299 + pixels[offset + 1] * 0.587 + pixels[offset + 2] * 0.114) / 255
     const predictedLuma = clamp(
       prediction[pixel] * 0.299 + prediction[plane + pixel] * 0.587 + prediction[plane * 2 + pixel] * 0.114,
       0,
@@ -1096,15 +1109,11 @@ async function applyAdvancedCorrection(source: Mat, correction: AdvancedCorrecti
   context.drawImage(bitmap, 0, 0, source.cols, source.rows)
   bitmap.close()
   const gains = context.getImageData(0, 0, source.cols, source.rows).data
-  const blend = 0.45 + clamp(shadowStrength, 0, 100) / 100 * 0.55
+  const blend = 0.45 + (clamp(shadowStrength, 0, 100) / 100) * 0.55
   for (let offset = 0; offset < source.data.length; offset += 4) {
     for (let channel = 0; channel < 3; channel += 1) {
       const gain = 2 ** ((gains[offset + channel] - 128) / 96)
-      source.data[offset + channel] = clamp(
-        source.data[offset + channel] * (1 + (gain - 1) * blend),
-        0,
-        255,
-      )
+      source.data[offset + channel] = clamp(source.data[offset + channel] * (1 + (gain - 1) * blend), 0, 255)
     }
   }
 }
@@ -1130,7 +1139,12 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
   outputWidth = Math.max(1, Math.round(outputWidth * outputScale))
   outputHeight = Math.max(1, Math.round(outputHeight * outputScale))
 
-  const sourceTriangle = cv.matFromArray(4, 1, cv.CV_32FC2, sourcePoints.flatMap((point) => [point.x, point.y]))
+  const sourceTriangle = cv.matFromArray(
+    4,
+    1,
+    cv.CV_32FC2,
+    sourcePoints.flatMap((point) => [point.x, point.y]),
+  )
   const destinationTriangle = cv.matFromArray(4, 1, cv.CV_32FC2, [
     0,
     0,
@@ -1160,14 +1174,11 @@ async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType:
     rotated = rotateMat(cv, warped, page.rotation)
     post({ id, type: 'progress', progress: 68, label: '正在应用增强效果' })
     if (page.filter === 'ai-deshadow') {
-      correction = page.advancedCorrection?.fingerprint === correctionFingerprint(page)
-        ? page.advancedCorrection
-        : await createAdvancedCorrection(page, rotated)
-      await applyAdvancedCorrection(
-        rotated,
-        correction,
-        page.adjustments.shadowStrength ?? 50,
-      )
+      correction =
+        page.advancedCorrection?.fingerprint === correctionFingerprint(page)
+          ? page.advancedCorrection
+          : await createAdvancedCorrection(page, rotated)
+      await applyAdvancedCorrection(rotated, correction, page.adjustments.shadowStrength ?? 50)
     }
     filtered = processFilter(cv, rotated, page.filter, page.adjustments)
     const canvas = new OffscreenCanvas(filtered.cols, filtered.rows)
@@ -1208,37 +1219,41 @@ async function releaseAdvancedModel(id?: string) {
 
 async function prepareAdvancedModel(id: string, model: ArrayBuffer, preferWebGpu: boolean) {
   await releaseAdvancedModel()
-  post({ id, type: 'progress', progress: 18, label: '正在载入高级去阴影模型' })
+  post({ id, type: 'progress', progress: 18, label: '正在选择本地推理后端' })
 
-  const configureWasm = (ort: typeof import('onnxruntime-web')) => {
-    ort.env.wasm.wasmPaths = new URL('/vendor/ort/', workerScope.location.origin).href
-    ort.env.wasm.numThreads = workerScope.crossOriginIsolated
-      ? Math.min(4, navigator.hardwareConcurrency || 2)
-      : 1
+  const configureWasm = (ort: OrtRuntime) => {
+    ort.env.wasm.numThreads = workerScope.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1
     ort.env.wasm.proxy = false
   }
 
-  const gpu = (navigator as Navigator & {
-    gpu?: {
-      requestAdapter: (options?: { powerPreference?: 'high-performance' }) => Promise<{
-        isFallbackAdapter?: boolean
-        info?: { isFallbackAdapter?: boolean }
-      } | null>
+  const gpu = (
+    navigator as Navigator & {
+      gpu?: {
+        requestAdapter: (options?: { powerPreference?: 'high-performance' }) => Promise<{
+          isFallbackAdapter?: boolean
+          info?: { isFallbackAdapter?: boolean }
+        } | null>
+      }
     }
-  }).gpu
-  const adapter = preferWebGpu && workerScope.isSecureContext && gpu
-    ? await gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null)
-    : null
+  ).gpu
+  const adapter =
+    preferWebGpu && workerScope.isSecureContext && gpu
+      ? await gpu.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null)
+      : null
   const adapterInfo = adapter as {
     isFallbackAdapter?: boolean
     info?: { isFallbackAdapter?: boolean }
   } | null
-  const canUseWebGpu = Boolean(
-    adapterInfo && !adapterInfo.isFallbackAdapter && !adapterInfo.info?.isFallbackAdapter,
-  )
+  const canUseWebGpu = Boolean(adapterInfo && !adapterInfo.isFallbackAdapter && !adapterInfo.info?.isFallbackAdapter)
   let lastError: unknown
   if (canUseWebGpu) {
     try {
+      post({
+        id,
+        type: 'progress',
+        progress: 26,
+        label: '正在初始化 WebGPU 推理',
+      })
       const ort = await import('onnxruntime-web/webgpu')
       configureWasm(ort)
       advancedSession = await ort.InferenceSession.create(model, {
@@ -1255,18 +1270,26 @@ async function prepareAdvancedModel(id: string, model: ArrayBuffer, preferWebGpu
   }
   if (!advancedSession) {
     try {
-      const ort = await import('onnxruntime-web')
-      configureWasm(ort)
-      advancedSession = await ort.InferenceSession.create(model, {
+      post({
+        id,
+        type: 'progress',
+        progress: 34,
+        label: '正在初始化 WebAssembly 推理',
+      })
+      configureWasm(ortWasm)
+      advancedSession = await ortWasm.InferenceSession.create(model, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all',
       })
-      advancedOrt = ort
+      advancedOrt = ortWasm
       advancedBackend = 'wasm'
     } catch (error) {
       await releaseAdvancedModel()
-      const detail = error instanceof Error ? error.message : String(lastError ?? error)
-      throw new Error(`高级去阴影模型无法启动：${detail}`)
+      const detail = error instanceof Error ? error.message : String(error)
+      const fallbackDetail = lastError
+        ? `；WebGPU 回退原因：${lastError instanceof Error ? lastError.message : String(lastError)}`
+        : ''
+      throw new Error(`高级去阴影模型无法启动（WebAssembly Runtime）：${detail}${fallbackDetail}`)
     }
   }
 
@@ -1276,18 +1299,22 @@ async function prepareAdvancedModel(id: string, model: ArrayBuffer, preferWebGpu
   const white = floatToHalf(0.82)
   input.fill(white)
   const started = performance.now()
-  const output = await runAdvancedTensor(input, size, size)
+  let output: Float32Array
+  try {
+    output = await runAdvancedTensor(input, size, size)
+  } catch (error) {
+    await releaseAdvancedModel()
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`高级去阴影模型自检失败：${detail}`)
+  }
   advancedBenchmarkMs = performance.now() - started
   if (!Number.isFinite(output[Math.floor(output.length / 2)])) {
     await releaseAdvancedModel()
     throw new Error('高级模型自检未通过')
   }
   const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4
-  advancedInputSize = advancedBackend === 'webgpu' || advancedBenchmarkMs <= 700
-    ? 512
-    : advancedBenchmarkMs <= 1_500
-      ? 384
-      : 256
+  advancedInputSize =
+    advancedBackend === 'webgpu' || advancedBenchmarkMs <= 700 ? 512 : advancedBenchmarkMs <= 1_500 ? 384 : 256
   if (memory <= 2) advancedInputSize = 256
   else if (memory <= 4 && advancedInputSize === 512) advancedInputSize = 384
   post({ id, type: 'progress', progress: 100, label: '高级去阴影已就绪' })
@@ -1302,19 +1329,20 @@ async function prepareAdvancedModel(id: string, model: ArrayBuffer, preferWebGpu
 
 workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerRequest>) => {
   const request = event.data
-  const task = request.type === 'detect'
-    ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
-    : request.type === 'render'
-      ? renderPage(
-          request.id,
-          request.page,
-          request.options.maxEdge,
-          request.options.mimeType,
-          request.options.quality,
-        )
-      : request.type === 'prepare-model'
-        ? prepareAdvancedModel(request.id, request.model, request.preferWebGpu)
-        : releaseAdvancedModel(request.id)
+  const task =
+    request.type === 'detect'
+      ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
+      : request.type === 'render'
+        ? renderPage(
+            request.id,
+            request.page,
+            request.options.maxEdge,
+            request.options.mimeType,
+            request.options.quality,
+          )
+        : request.type === 'prepare-model'
+          ? prepareAdvancedModel(request.id, request.model, request.preferWebGpu)
+          : releaseAdvancedModel(request.id)
 
   void task.catch((error: unknown) => {
     const message = error instanceof Error ? error.message : '本地图像处理失败'
