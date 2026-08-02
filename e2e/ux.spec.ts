@@ -32,13 +32,19 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
   for (const [route, heading] of [
     ['/', /清晰扫描仪/],
     ['/history', '扫描记录'],
-    ['/settings', '本地图像引擎'],
     ['/scan/document', '添加文档页面'],
   ] as const) {
     await page.goto(route)
     await expect(page.getByRole('heading', { name: heading, exact: typeof heading === 'string' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
   }
+
+  await page.goto('/')
+  await expect(page.getByRole('link', { name: '设置', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '本地图像引擎设置' })).toHaveCount(0)
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/')
 
   await page.goto('/history')
   await expect(page.getByRole('heading', { name: '还没有扫描记录' })).toBeVisible()

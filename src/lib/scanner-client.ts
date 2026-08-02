@@ -43,7 +43,7 @@ class ScannerClient {
     this.worker.addEventListener('message', (event: MessageEvent<ScannerWorkerResponse>) => {
       const response = event.data
       if (response.type === 'progress') {
-        useAppStore.getState().setEngineState(response.progress === 100, response.progress, response.label)
+        useAppStore.getState().setEngineState(response.progress, response.label)
         return
       }
       const request = this.pending.get(response.id)
@@ -51,14 +51,14 @@ class ScannerClient {
       if (response.type === 'error') {
         window.clearTimeout(request.timeout)
         this.pending.delete(response.id)
-        useAppStore.getState().setEngineState(true, 100, '标准图像引擎可用')
+        useAppStore.getState().setEngineState(100, '标准图像引擎可用')
         request.reject(new Error(response.message))
         return
       }
       if (response.type === 'detected' || response.type === 'rendered') {
         window.clearTimeout(request.timeout)
         this.pending.delete(response.id)
-        useAppStore.getState().setEngineState(true, 100, '本地图像引擎已就绪')
+        useAppStore.getState().setEngineState(100, '本地图像引擎已就绪')
         request.resolve(response)
       }
     })

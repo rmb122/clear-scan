@@ -100,13 +100,13 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   expect(download.suggestedFilename()).toMatch(/\.pdf$/)
 })
 
-test('settings can clear all scan history', async ({ page }, testInfo) => {
+test('scan history can clear all local projects', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'One storage cleanup run is enough')
   await page.goto('/scan/document')
   await page.locator('input[type="file"]').nth(1).setInputFiles(path.resolve('e2e/fixtures/document.png'))
   await expect(page.getByText('确认四个角点')).toBeVisible({ timeout: 120_000 })
 
-  await page.goto('/settings')
+  await page.goto('/history')
   const clearButton = page.getByRole('button', { name: '清空所有历史数据' })
   await expect(clearButton).toBeEnabled()
   await clearButton.click()

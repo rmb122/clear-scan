@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CreditCard, FileText, Plane, ScanLine, Search, ShieldAlert, Trash2 } from 'lucide-react'
+import { CreditCard, FileText, LoaderCircle, Plane, ScanLine, Search, ShieldAlert, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ProjectCard } from '@/components/project-card'
@@ -24,6 +24,7 @@ export function HistoryPage() {
   const [filter, setFilter] = useState<'all' | ScanMode>('all')
   const [deleteId, setDeleteId] = useState<string>()
   const [clearOpen, setClearOpen] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const filtered = useMemo(
     () =>
@@ -44,10 +45,19 @@ export function HistoryPage() {
   }
 
   const clearAll = async () => {
-    await clearScannerData()
-    setClearOpen(false)
-    await reload()
-    toast.success('全部本地扫描数据已清空')
+    setClearing(true)
+    try {
+      await clearScannerData()
+      await reload()
+      setClearOpen(false)
+      toast.success('所有扫描历史已清空')
+    } catch (reason) {
+      toast.error('扫描历史清理失败', {
+        description: reason instanceof Error ? reason.message : '请关闭其他页面后重试',
+      })
+    } finally {
+      setClearing(false)
+    }
   }
 
   return (
@@ -59,9 +69,9 @@ export function HistoryPage() {
           <p className="mt-2 text-sm text-muted-foreground">所有项目只保存在此设备的当前浏览器中。</p>
         </div>
         {summaries.length > 0 && (
-          <Button variant="outline" onClick={() => setClearOpen(true)}>
+          <Button variant="destructive" disabled={clearing} onClick={() => setClearOpen(true)}>
             <Trash2 />
-            清空全部
+            清空所有历史数据
           </Button>
         )}
       </div>
@@ -146,22 +156,23 @@ export function HistoryPage() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
+      <Dialog open={clearOpen} onOpenChange={(open) => !clearing && setClearOpen(open)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldAlert className="text-destructive" />
-              清空全部本地数据？
+              清空所有扫描历史？
             </DialogTitle>
             <DialogDescription>
-              这会删除当前浏览器中保存的所有扫描项目，导出到文件系统的内容不受影响。
+              所有项目、原图、缩略图、编辑设置和页面缓存都会永久删除，已经导出的文件不受影响。
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setClearOpen(false)}>
+            <Button variant="outline" disabled={clearing} onClick={() => setClearOpen(false)}>
               取消
             </Button>
-            <Button variant="destructive" onClick={() => void clearAll()}>
+            <Button variant="destructive" disabled={clearing} onClick={() => void clearAll()}>
+              {clearing && <LoaderCircle className="animate-spin" />}
               确认清空
             </Button>
           </div>

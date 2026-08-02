@@ -1,4 +1,4 @@
-import { FolderClock, Home, ScanLine, Settings, ShieldCheck } from 'lucide-react'
+import { FolderClock, Home, ScanLine, ShieldCheck } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BrandLogo } from './brand-logo'
@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { to: '/', label: '首页', icon: Home, exact: true },
   { to: '/history', label: '扫描记录', icon: FolderClock },
-  { to: '/settings', label: '设置', icon: Settings },
 ]
 
 export function AppShell() {
@@ -42,13 +41,6 @@ export function AppShell() {
             ))}
           </nav>
           <div className="flex items-center gap-1 sm:gap-2">
-            <NavLink
-              to="/settings"
-              aria-label="本地图像引擎设置"
-              className="grid size-9 place-items-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground md:hidden"
-            >
-              <Settings className="size-4" />
-            </NavLink>
             <OnlineBadge />
             <span className="hidden items-center gap-1.5 text-[11px] font-semibold text-muted-foreground lg:flex">
               <ShieldCheck className="size-3.5 text-primary" /> 图片仅在本机处理
