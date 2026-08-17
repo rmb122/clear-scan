@@ -1,4 +1,4 @@
-import { Code2, FolderClock, Home, ScanLine, ShieldCheck } from 'lucide-react'
+import { Code2, FolderClock, Home, ScanLine } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BrandLogo } from './brand-logo'
@@ -19,12 +19,15 @@ export function AppShell() {
   return (
     <div className="min-h-svh">
       <PwaLifecycle />
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 h-16 border-b border-border/70 bg-background/88 backdrop-blur-xl">
+        <div className="relative mx-auto flex h-full max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <NavLink to="/" aria-label="清晰扫描首页">
             <BrandLogo />
           </NavLink>
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav
+            aria-label="主导航"
+            className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex"
+          >
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -44,9 +47,6 @@ export function AppShell() {
           </nav>
           <div className="flex items-center gap-1 sm:gap-2">
             <OnlineBadge />
-            <span className="hidden items-center gap-1.5 text-[11px] font-semibold text-muted-foreground lg:flex">
-              <ShieldCheck className="size-3.5 text-primary" /> 图片仅在本机处理
-            </span>
             <Button asChild variant="ghost" size="icon" className="sm:hidden">
               <a
                 href="https://github.com/rmb122/clear-scan"

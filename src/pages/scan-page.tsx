@@ -9,6 +9,7 @@ import {
   RotateCcw,
   ScanLine,
   Sparkles,
+  Trash2,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -19,6 +20,13 @@ import { FilterPanel } from '@/components/filter-panel'
 import { PageRail } from '@/components/page-rail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import {
   bulkUpdatePageMetadata,
@@ -46,7 +54,6 @@ import {
   type ScanProject,
 } from '@/lib/types'
 import { cn, createId, modeDefaultName } from '@/lib/utils'
-import { useAppStore } from '@/store/app-store'
 
 type EditorStage = 'capture' | 'crop' | 'enhance'
 
@@ -88,13 +95,15 @@ export function ScanPage() {
   const [stage, setStage] = useState<EditorStage>('capture')
   const [passportLayout, setPassportLayoutState] = useState<PassportLayout>('data-page')
   const [busy, setBusy] = useState(false)
+  const [processingProgress, setProcessingProgress] = useState(0)
+  const [processingLabel, setProcessingLabel] = useState('正在准备照片')
+  const [pendingDelete, setPendingDelete] = useState<ScanPageModel>()
+  const [deletingPage, setDeletingPage] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [sourceUrl, setSourceUrl] = useState<string>()
   const [preview, setPreview] = useState<RenderedPreview>()
   const activeRef = useRef<ScanPageModel | undefined>(undefined)
   const projectRef = useRef<ScanProject | undefined>(undefined)
-  const engineProgress = useAppStore((state) => state.engineProgress)
-  const engineLabel = useAppStore((state) => state.engineLabel)
   const activeSource = active?.source
   const activePageId = active?.id
   const activeRenderKey = useMemo(
@@ -139,6 +148,13 @@ export function ScanPage() {
   )
   const nextRole: PageRole =
     mode === 'id-card' ? (pages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
+  const pendingDeleteLabel = pendingDelete
+    ? mode === 'id-card'
+      ? pendingDelete.role === 'front'
+        ? '人像面'
+        : '国徽面'
+      : `第 ${pendingDelete.order + 1} 页`
+    : '这个页面'
 
   useEffect(() => {
     void scannerClient.prewarm().catch(() => undefined)
@@ -310,17 +326,40 @@ export function ScanPage() {
 
   const processFiles = async (files: File[]) => {
     if (!files.length || busy) return
+    const filesToProcess =
+      mode === 'id-card' ? files.slice(0, Math.max(0, 2 - pages.length)) : files
+    if (!filesToProcess.length) return
+    setProcessingProgress(0)
+    setProcessingLabel(
+      filesToProcess.length > 1 ? `正在准备第 1/${filesToProcess.length} 张照片` : '正在准备照片',
+    )
     setBusy(true)
     try {
       const currentProject = await ensureProject()
       const workingPages = [...pages]
       const added: ScanPageModel[] = []
-      for (const file of files) {
-        if (mode === 'id-card' && workingPages.length >= 2) break
+      for (const [fileIndex, file] of filesToProcess.entries()) {
         let detection: DetectionResult
         try {
-          detection = await scannerClient.detect(file, mode, passportLayout)
+          detection = await scannerClient.detect(file, mode, passportLayout, {
+            onProgress: (progress, label) => {
+              const batchProgress =
+                ((fileIndex + Math.max(0, Math.min(100, progress)) / 100) / filesToProcess.length) *
+                100
+              setProcessingProgress((current) => Math.max(current, batchProgress))
+              setProcessingLabel(
+                filesToProcess.length > 1
+                  ? `${label} · 第 ${fileIndex + 1}/${filesToProcess.length} 张`
+                  : label,
+              )
+            },
+          })
         } catch (reason) {
+          setProcessingLabel(
+            filesToProcess.length > 1
+              ? `正在读取第 ${fileIndex + 1}/${filesToProcess.length} 张照片`
+              : '正在读取照片',
+          )
           detection = await fallbackDetection(file)
           toast.warning('没有可靠识别到文档边缘', {
             description:
@@ -357,6 +396,7 @@ export function ScanPage() {
         workingPages.push(page)
         added.push(page)
         await putPage(page)
+        setProcessingProgress(((fileIndex + 1) / filesToProcess.length) * 100)
       }
       await db.projects.update(currentProject.id, {
         updatedAt: Date.now(),
@@ -421,26 +461,32 @@ export function ScanPage() {
     void db.projects.put(updated)
   }
 
-  const deletePage = async (page: ScanPageModel) => {
-    if (
-      !window.confirm(
-        `确定删除${mode === 'id-card' ? (page.role === 'front' ? '人像面' : '国徽面') : `第 ${page.order + 1} 页`}？`,
-      )
-    )
-      return
-    await db.pages.delete(page.id)
-    scannerClient.invalidatePage(page.id)
-    const remaining = effectivePages
-      .filter((item) => item.id !== page.id)
-      .sort((a, b) => a.order - b.order)
-      .map((item, index) => ({ ...item, order: index }))
-    await bulkUpdatePageMetadata(remaining)
-    setPages(remaining)
-    if (active?.id === page.id) {
-      setActive(remaining[0])
-      setStage(remaining.length ? (remaining[0].cropConfirmed ? 'enhance' : 'crop') : 'capture')
+  const deletePage = async () => {
+    if (!pendingDelete) return
+    const page = pendingDelete
+    setDeletingPage(true)
+    try {
+      await db.pages.delete(page.id)
+      scannerClient.invalidatePage(page.id)
+      const remaining = effectivePages
+        .filter((item) => item.id !== page.id)
+        .sort((a, b) => a.order - b.order)
+        .map((item, index) => ({ ...item, order: index }))
+      await bulkUpdatePageMetadata(remaining)
+      setPages(remaining)
+      if (active?.id === page.id) {
+        setActive(remaining[0])
+        setStage(remaining.length ? (remaining[0].cropConfirmed ? 'enhance' : 'crop') : 'capture')
+      }
+      setPendingDelete(undefined)
+      toast.success('页面已删除')
+    } catch (reason) {
+      toast.error('页面删除失败', {
+        description: reason instanceof Error ? reason.message : '请稍后重试',
+      })
+    } finally {
+      setDeletingPage(false)
     }
-    toast.success('页面已删除')
   }
 
   const movePage = async (page: ScanPageModel, direction: -1 | 1) => {
@@ -645,7 +691,7 @@ export function ScanPage() {
       </div>
 
       <div className="bg-card lg:min-h-0 lg:flex-1">
-        <div className="mx-auto max-w-[1480px] lg:grid lg:h-full lg:grid-cols-[132px_minmax(0,1fr)_340px]">
+        <div className="mx-auto max-w-[1480px] lg:grid lg:h-full lg:grid-cols-[144px_minmax(0,1fr)_340px]">
           <aside className="hidden border-r border-border bg-card lg:block lg:h-full">
             <PageRail
               mode={mode}
@@ -653,7 +699,7 @@ export function ScanPage() {
               activeId={active?.id}
               onSelect={selectPage}
               onAdd={startCapture}
-              onDelete={(page) => void deletePage(page)}
+              onDelete={setPendingDelete}
               onMove={(page, direction) => void movePage(page, direction)}
             />
           </aside>
@@ -665,7 +711,7 @@ export function ScanPage() {
                 activeId={active?.id}
                 onSelect={selectPage}
                 onAdd={startCapture}
-                onDelete={(page) => void deletePage(page)}
+                onDelete={setPendingDelete}
                 onMove={(page, direction) => void movePage(page, direction)}
               />
             </div>
@@ -688,10 +734,10 @@ export function ScanPage() {
                       <LoaderCircle className="size-5 animate-spin text-primary" />
                       <div>
                         <p className="text-sm font-bold">正在处理照片</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{engineLabel}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{processingLabel}</p>
                       </div>
                     </div>
-                    <Progress value={engineProgress} className="mt-4" />
+                    <Progress value={processingProgress} className="mt-4" />
                   </div>
                 </div>
               )}
@@ -779,6 +825,7 @@ export function ScanPage() {
                     </div>
                     <Button
                       variant="outline"
+                      size="lg"
                       className="w-full"
                       disabled={busy}
                       onClick={() => void redetect()}
@@ -847,6 +894,36 @@ export function ScanPage() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && !deletingPage && setPendingDelete(undefined)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="text-destructive" />
+              <span>{`删除${pendingDeleteLabel}？`}</span>
+            </DialogTitle>
+            <DialogDescription>
+              该页原图、裁剪设置和增强效果都会永久移除，其他页面不会受到影响。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={deletingPage}
+              onClick={() => setPendingDelete(undefined)}
+            >
+              取消
+            </Button>
+            <Button variant="destructive" disabled={deletingPage} onClick={() => void deletePage()}>
+              {deletingPage ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+              确认删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -67,6 +67,44 @@ afterEach(() => {
 })
 
 describe('scanner request scheduling', () => {
+  it('forwards progress from the active detection request only', async () => {
+    const client = new ScannerClient()
+    const onProgress = vi.fn()
+    const detection = client.detect(new Blob(['source']), 'document', undefined, { onProgress })
+    const worker = WorkerMock.instances[0]
+    const request = worker.messages[0]
+
+    worker.respond({
+      id: '__bootstrap__',
+      type: 'progress',
+      progress: 6,
+      label: '图像 Worker 已启动',
+    })
+    expect(onProgress).not.toHaveBeenCalled()
+
+    worker.respond({
+      id: request.id,
+      type: 'progress',
+      progress: 35,
+      label: '正在分析文档边缘',
+    })
+    expect(onProgress).toHaveBeenCalledWith(35, '正在分析文档边缘')
+
+    worker.respond({
+      id: request.id,
+      type: 'detected',
+      result: {
+        width: 1200,
+        height: 900,
+        corners: DEFAULT_QUAD,
+        confidence: 0.9,
+        cornerSource: 'detected',
+        glareLevel: 'none',
+      },
+    })
+    await detection
+  })
+
   it('keeps only the newest queued preview', async () => {
     const client = new ScannerClient()
     const options = { maxEdge: 1400, mimeType: 'image/jpeg' as const, quality: 0.9 }

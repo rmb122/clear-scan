@@ -82,7 +82,9 @@ describe('FilterPanel', () => {
 
     fireEvent.click(original)
     expect(original).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('当前没有附加效果')).toBeInTheDocument()
+    screen
+      .getAllByRole('button', { name: /^关闭$/ })
+      .forEach((button) => expect(button).toHaveAttribute('aria-pressed', 'true'))
   })
 
   it('uses a matching strength label for each light correction', () => {
@@ -175,6 +177,25 @@ describe('FilterPanel', () => {
     fireEvent.pointerUp(slider, { pointerId: 1, clientX: 90 })
     expect(onAdjustmentsChange).toHaveBeenCalledTimes(1)
     expect(onAdjustmentsChange).toHaveBeenCalledWith({ ...DEFAULT_ADJUSTMENTS, brightness: 32 })
+  })
+
+  it('shows restoring defaults only after fine-tuning changes', () => {
+    const onAdjustmentsChange = vi.fn()
+    const props = {
+      effects: SMART_EFFECTS,
+      glareLevel: 'none' as const,
+      onEffectChange: vi.fn(),
+      onPresetApply: vi.fn(),
+      onAdjustmentsChange,
+      onRotate: vi.fn(),
+    }
+    const { rerender } = render(<FilterPanel {...props} adjustments={DEFAULT_ADJUSTMENTS} />)
+    expect(screen.queryByRole('button', { name: '恢复默认' })).not.toBeInTheDocument()
+
+    rerender(<FilterPanel {...props} adjustments={{ ...DEFAULT_ADJUSTMENTS, brightness: 12 }} />)
+    const restore = screen.getByRole('button', { name: '恢复默认' })
+    fireEvent.click(restore)
+    expect(onAdjustmentsChange).toHaveBeenCalledWith(DEFAULT_ADJUSTMENTS)
   })
 
   it('describes active glare repair and keeps fine-tuning controls collapsed', () => {

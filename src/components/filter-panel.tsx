@@ -94,18 +94,6 @@ function adjustmentsEqual(left: EnhancementSettings, right: EnhancementSettings)
   )
 }
 
-function activeEffectLabels(effects: EnhancementEffects) {
-  const labels: string[] = []
-  if (effects.shadow === 'deshadow') labels.push('标准去阴影')
-  if (effects.shadow === 'balance') labels.push('亮度均衡')
-  if (effects.glare === 'deglare') labels.push('去反光')
-  if (effects.color === 'grayscale') labels.push('灰度')
-  if (effects.color === 'black-white') labels.push('黑白')
-  if (effects.color === 'enhanced-color') labels.push('彩色增强')
-  if (effects.detail === 'sharpen') labels.push('加锐')
-  return labels
-}
-
 function DeferredAdjustmentSlider({
   label,
   value,
@@ -167,7 +155,6 @@ export function FilterPanel({
       : defaultAdjustments && effectsEqual(effects, SMART_EFFECTS)
         ? 'smart'
         : 'custom'
-  const enabledLabels = activeEffectLabels(effects)
   const adjustmentRows: Array<{
     key: keyof EnhancementSettings
     label: string
@@ -233,17 +220,15 @@ export function FilterPanel({
           </h3>
           <Badge variant="secondary">{activePreset === 'custom' ? '自定义组合' : '推荐方案'}</Badge>
         </div>
-        <div className="grid gap-1.5 rounded-2xl bg-muted p-1.5">
+        <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-muted p-1.5">
           {[
             {
               value: 'original' as const,
               label: '原版',
-              description: '清除全部效果',
             },
             {
               value: 'smart' as const,
               label: '智能增强',
-              description: '均衡光照＋去反光＋清晰文字',
             },
           ].map((preset) => (
             <button
@@ -253,17 +238,14 @@ export function FilterPanel({
               aria-pressed={activePreset === preset.value}
               onClick={() => onPresetApply(preset.value)}
               className={cn(
-                'flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition',
+                'flex h-10 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold transition',
                 activePreset === preset.value
                   ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
                   : 'text-muted-foreground hover:bg-background/65',
               )}
             >
-              <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
-                {activePreset === preset.value && <Check className="size-3.5 text-primary" />}
-                {preset.label}
-              </span>
-              <span className="text-right text-[10px] leading-4">{preset.description}</span>
+              {activePreset === preset.value && <Check className="size-3.5 text-primary" />}
+              {preset.label}
             </button>
           ))}
         </div>
@@ -273,17 +255,6 @@ export function FilterPanel({
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-sm font-bold">效果组合</h3>
           <span className="text-[10px] font-semibold text-muted-foreground">跨分类可叠加</span>
-        </div>
-        <div className="mb-3 flex min-h-7 flex-wrap gap-1.5" aria-label="当前启用效果">
-          {enabledLabels.length ? (
-            enabledLabels.map((label) => (
-              <Badge key={label} variant="secondary">
-                {label}
-              </Badge>
-            ))
-          ) : (
-            <span className="text-xs text-muted-foreground">当前没有附加效果</span>
-          )}
         </div>
         <div className="space-y-3">
           {effectGroups.map((group) => (
@@ -320,27 +291,26 @@ export function FilterPanel({
         </div>
       </section>
 
-      <details className="group overflow-hidden rounded-2xl border border-border/80 bg-background">
+      <details className="group relative overflow-hidden rounded-2xl border border-border/80 bg-background">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
           <span className="flex items-center gap-2">
             <SlidersHorizontal className="size-4 text-primary" />
             高级微调
           </span>
-          <span className="flex items-center gap-2 text-[10px] font-semibold text-muted-foreground">
-            松手后更新预览
-            <ChevronDown className="size-4 transition group-open:rotate-180" />
-          </span>
+          <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
         </summary>
+        {!defaultAdjustments && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute right-9 top-1.5 hidden h-8 rounded-lg px-2.5 text-[11px] text-muted-foreground group-open:inline-flex"
+            onClick={() => onAdjustmentsChange({ ...DEFAULT_ADJUSTMENTS })}
+          >
+            <RotateCcw className="size-3.5" />
+            恢复默认
+          </Button>
+        )}
         <div className="border-t border-border/70 px-4 pb-4 pt-4">
-          <div className="mb-4 flex justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onAdjustmentsChange({ ...DEFAULT_ADJUSTMENTS })}
-            >
-              重置微调
-            </Button>
-          </div>
           <div className="space-y-5">
             {adjustmentRows.map((row) => (
               <label

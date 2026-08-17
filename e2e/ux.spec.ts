@@ -62,6 +62,13 @@ test('desktop and mobile shells expose useful empty, install, and fallback state
     await expect(sourceLink).toHaveText('')
   } else {
     await expect(sourceLink).toHaveText('源代码')
+    const navigationBox = await page.getByRole('navigation', { name: '主导航' }).boundingBox()
+    const viewport = page.viewportSize()
+    expect(navigationBox).not.toBeNull()
+    expect(viewport).not.toBeNull()
+    expect(
+      Math.abs(navigationBox!.x + navigationBox!.width / 2 - viewport!.width / 2),
+    ).toBeLessThanOrEqual(1)
   }
   await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
@@ -184,6 +191,22 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   const deleteBox = await deletePage.boundingBox()
   expect(deleteBox).not.toBeNull()
   expect(Math.min(deleteBox!.width, deleteBox!.height)).toBeGreaterThanOrEqual(36)
+  await deletePage.click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '删除第 1 页？' })).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  const redetect = page.getByRole('button', { name: '重新识别' })
+  const confirmCrop = page.getByRole('button', { name: '确认裁剪' })
+  const [redetectBox, confirmCropBox] = await Promise.all([
+    redetect.boundingBox(),
+    confirmCrop.boundingBox(),
+  ])
+  expect(redetectBox).not.toBeNull()
+  expect(confirmCropBox).not.toBeNull()
+  expect(redetectBox!.height).toBe(confirmCropBox!.height)
+  expect(redetectBox!.width).toBe(confirmCropBox!.width)
 
   if (testInfo.project.name === 'desktop-chromium') {
     const editorBox = await page.locator('section.paper-grid').boundingBox()
@@ -194,13 +217,24 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
     const pageOverflow = await page.evaluate(
       () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
     )
-    expect(pageOverflow).toBeLessThanOrEqual(1)
+    expect(pageOverflow).toBe(0)
   }
 
-  await page.getByRole('button', { name: '确认裁剪' }).click()
+  await confirmCrop.click()
   await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({
     timeout: 120_000,
   })
+  const originalPreset = page.getByRole('button', { name: '原版', exact: true })
+  const smartPreset = page.getByRole('button', { name: '智能增强', exact: true })
+  const [originalPresetBox, smartPresetBox] = await Promise.all([
+    originalPreset.boundingBox(),
+    smartPreset.boundingBox(),
+  ])
+  expect(originalPresetBox).not.toBeNull()
+  expect(smartPresetBox).not.toBeNull()
+  expect(originalPresetBox!.y).toBe(smartPresetBox!.y)
+  expect(originalPresetBox!.height).toBe(smartPresetBox!.height)
+  expect(originalPresetBox!.x).toBeLessThan(smartPresetBox!.x)
   if (testInfo.project.name === 'mobile-chromium') {
     await expect
       .poll(async () =>

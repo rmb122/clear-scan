@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ScanMode, ScanPage } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -35,7 +35,7 @@ export function PageRail({
   return (
     <div
       aria-label="扫描页面"
-      className="hide-scrollbar flex gap-2 overflow-x-auto p-3 lg:h-full lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:p-3"
+      className="hide-scrollbar flex gap-2 overflow-x-auto p-3 lg:h-full lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:p-2"
     >
       {sorted.map((page, index) => {
         const label =
@@ -67,34 +67,32 @@ export function PageRail({
               </span>
             </button>
             {active && (
-              <div className="absolute right-1 top-1 flex overflow-hidden rounded-lg bg-black/65 text-white backdrop-blur">
-                {mode !== 'id-card' && sorted.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={`${label}前移`}
-                      disabled={index === 0}
-                      onClick={() => onMove(page, -1)}
-                      className="grid size-9 place-items-center transition hover:bg-white/10 disabled:opacity-30"
-                    >
-                      <ChevronLeft className="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${label}后移`}
-                      disabled={index === sorted.length - 1}
-                      onClick={() => onMove(page, 1)}
-                      className="grid size-9 place-items-center transition hover:bg-white/10 disabled:opacity-30"
-                    >
-                      <ChevronRight className="size-3.5" />
-                    </button>
-                  </>
-                )}
+              <div className="mt-1 grid grid-cols-3 overflow-hidden rounded-lg border border-border/80 bg-muted/60 text-muted-foreground">
+                <button
+                  type="button"
+                  aria-label={`${label}前移`}
+                  disabled={index === 0}
+                  onClick={() => onMove(page, -1)}
+                  className="grid h-9 place-items-center border-r border-border/70 transition hover:bg-background hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronLeft className="size-3.5 lg:hidden" />
+                  <ChevronUp className="hidden size-3.5 lg:block" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${label}后移`}
+                  disabled={index === sorted.length - 1}
+                  onClick={() => onMove(page, 1)}
+                  className="grid h-9 place-items-center border-r border-border/70 transition hover:bg-background hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronRight className="size-3.5 lg:hidden" />
+                  <ChevronDown className="hidden size-3.5 lg:block" />
+                </button>
                 <button
                   type="button"
                   aria-label={`删除${label}`}
                   onClick={() => onDelete(page)}
-                  className="grid size-9 place-items-center transition hover:bg-white/10 hover:text-red-300"
+                  className="grid h-9 w-full place-items-center transition hover:bg-red-50 hover:text-destructive"
                 >
                   <Trash2 className="size-3.5" />
                 </button>

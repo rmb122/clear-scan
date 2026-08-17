@@ -44,7 +44,7 @@ test('local OpenCV asset initializes inside a classic worker', async ({ page }) 
   expect(state.cvType).toBe('object')
 })
 
-test('uploads a document and reaches the crop editor', async ({ page }) => {
+test('uploads a document and reaches the crop editor', async ({ page }, testInfo) => {
   await page.goto('/#/scan/document')
   await expect(page.getByRole('heading', { name: '添加文档页面' })).toBeVisible()
   const upload = page.locator('input[type="file"]').nth(1)
@@ -57,6 +57,10 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   await expect(page.getByText('自动识别完成')).toHaveCount(0)
   await expect(page.getByText('确认文档边缘', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '导出' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '第 1 页前移' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '第 1 页前移' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '第 1 页后移' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '第 1 页后移' })).toBeDisabled()
   const storageShape = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('clear-scan-db')
@@ -153,8 +157,9 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   expect(lightOffBox).not.toBeNull()
   expect(shadowBox).not.toBeNull()
   expect(balanceBox).not.toBeNull()
-  expect(smartBox!.y).toBeGreaterThanOrEqual(originalBox!.y + originalBox!.height)
+  expect(Math.abs(smartBox!.y - originalBox!.y)).toBeLessThanOrEqual(1)
   expect(Math.abs(smartBox!.width - originalBox!.width)).toBeLessThanOrEqual(1)
+  expect(originalBox!.x + originalBox!.width).toBeLessThanOrEqual(smartBox!.x)
   expect(lightOffBox!.width).toBeGreaterThan(shadowBox!.width * 1.8)
   expect(Math.abs(shadowBox!.y - balanceBox!.y)).toBeLessThanOrEqual(1)
   expect(shadowBox!.x + shadowBox!.width).toBeLessThanOrEqual(balanceBox!.x)
@@ -175,6 +180,17 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   await page.getByRole('button', { name: '生成并下载' }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toMatch(/\.pdf$/)
+
+  if (testInfo.project.name === 'desktop-chromium') {
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.getByRole('button', { name: '删除第 1 页' }).click()
+    await page.getByRole('button', { name: '确认删除' }).click()
+    await expect(page.getByRole('heading', { name: '添加文档页面' })).toBeVisible()
+    const pageOverflow = await page.evaluate(
+      () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    )
+    expect(pageOverflow).toBe(0)
+  }
 })
 
 test('scan history can clear all local projects', async ({ page }, testInfo) => {

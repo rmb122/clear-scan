@@ -18,6 +18,10 @@ export interface ScannerRenderRequestOptions {
   signal?: AbortSignal
 }
 
+export interface ScannerDetectionRequestOptions {
+  onProgress?: (progress: number, label: string) => void
+}
+
 interface RenderedResult {
   blob: Blob
   width: number
@@ -30,6 +34,7 @@ interface QueuedRequest {
   timeoutMs: number
   sequence: number
   signal?: AbortSignal
+  onProgress?: (progress: number, label: string) => void
   abortHandler?: () => void
   timeout?: number
   consumerSettled: boolean
@@ -126,9 +131,11 @@ export class ScannerClient {
 
   private handleResponse(response: ScannerWorkerResponse) {
     if (response.type === 'progress') {
-      if (response.id === '__bootstrap__' || response.id === this.active?.message.id) {
+      const activeRequest = response.id === this.active?.message.id ? this.active : undefined
+      if (response.id === '__bootstrap__' || activeRequest) {
         useAppStore.getState().setEngineState(response.progress, response.label)
       }
+      activeRequest?.onProgress?.(response.progress, response.label)
       return
     }
 
@@ -236,7 +243,13 @@ export class ScannerClient {
       intent,
       timeoutMs = 90_000,
       signal,
-    }: { intent: RequestIntent; timeoutMs?: number; signal?: AbortSignal },
+      onProgress,
+    }: {
+      intent: RequestIntent
+      timeoutMs?: number
+      signal?: AbortSignal
+      onProgress?: (progress: number, label: string) => void
+    },
   ) {
     return new Promise<ScannerWorkerResponse>((resolve, reject) => {
       if (signal?.aborted) {
@@ -249,6 +262,7 @@ export class ScannerClient {
         intent,
         timeoutMs,
         signal,
+        onProgress,
         sequence: this.sequence,
         consumerSettled: false,
         resolve,
@@ -326,7 +340,12 @@ export class ScannerClient {
     return this.warmPromise
   }
 
-  async detect(source: Blob, mode: ScanMode, passportLayout?: PassportLayout) {
+  async detect(
+    source: Blob,
+    mode: ScanMode,
+    passportLayout?: PassportLayout,
+    requestOptions: ScannerDetectionRequestOptions = {},
+  ) {
     const response = await this.request(
       {
         id: createId(),
@@ -335,7 +354,7 @@ export class ScannerClient {
         mode,
         passportLayout,
       },
-      { intent: 'detect' },
+      { intent: 'detect', onProgress: requestOptions.onProgress },
     )
     if (response.type !== 'detected') throw new Error('未收到边缘识别结果')
     return response.result as DetectionResult
