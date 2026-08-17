@@ -4,6 +4,7 @@ import {
   clearScannerData,
   db,
   deleteProject,
+  getProjectPageSummary,
   getProjectWithPages,
   updatePageMetadata,
   updatePageWithThumbnail,
@@ -67,6 +68,10 @@ describe('local scan repository', () => {
     expect(stored.pages.map((page) => page.id)).toEqual(['page-1', 'page-2'])
     expect(stored.pages[0].source).toBeInstanceOf(Blob)
     expect(stored.pages[0].thumbnail).toBeInstanceOf(Blob)
+
+    const summary = await getProjectPageSummary(project.id)
+    expect(summary.pageCount).toBe(2)
+    expect(await summary.thumbnail?.text()).toBe('thumbnail')
 
     const { whiteningStrength: _legacyMissingField, ...legacyAdjustments } = DEFAULT_ADJUSTMENTS
     await db.pages.update('page-1', { adjustments: legacyAdjustments as EnhancementSettings })

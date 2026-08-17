@@ -101,6 +101,21 @@ export async function getProjectPages(projectId: string) {
   return pages.map(decodePage)
 }
 
+export async function getProjectPageSummary(projectId: string) {
+  const [pageCount, coverPage] = await Promise.all([
+    db.pages.where('projectId').equals(projectId).count(),
+    db.pages
+      .where('[projectId+order]')
+      .between([projectId, Dexie.minKey], [projectId, Dexie.maxKey], true, true)
+      .first(),
+  ])
+  const cover = coverPage?.thumbnail ?? coverPage?.source
+  return {
+    pageCount,
+    thumbnail: cover ? decodeBinary(cover) : undefined,
+  }
+}
+
 export async function getProjectWithPages(projectId: string) {
   const [project, pages] = await Promise.all([
     db.projects.get(projectId),

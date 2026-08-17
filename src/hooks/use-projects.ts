@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { db, getProjectPages } from '@/lib/db'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { db, getProjectPageSummary } from '@/lib/db'
 import type { ScanProject } from '@/lib/types'
 
 export interface ProjectSummary {
@@ -8,43 +8,53 @@ export interface ProjectSummary {
   thumbnailUrl?: string
 }
 
+function revokeThumbnailUrls(summaries: ProjectSummary[]) {
+  summaries.forEach((summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl))
+}
+
 export function useProjectSummaries(limit?: number) {
   const [summaries, setSummaries] = useState<ProjectSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const summariesRef = useRef<ProjectSummary[]>([])
+  const loadVersionRef = useRef(0)
+
+  const replaceSummaries = useCallback((next: ProjectSummary[]) => {
+    revokeThumbnailUrls(summariesRef.current)
+    summariesRef.current = next
+    setSummaries(next)
+  }, [])
 
   const load = useCallback(async () => {
+    const loadVersion = ++loadVersionRef.current
     setLoading(true)
-    const projects = await db.projects.orderBy('updatedAt').reverse().toArray()
-    const selected = typeof limit === 'number' ? projects.slice(0, limit) : projects
-    const next = await Promise.all(
-      selected.map(async (project) => {
-        const pages = await getProjectPages(project.id)
-        const thumbnail = pages[0]?.thumbnail ?? pages[0]?.source
-        return {
-          project,
-          pageCount: pages.length,
-          thumbnailUrl: thumbnail ? URL.createObjectURL(thumbnail) : undefined,
-        }
-      }),
-    )
-    setSummaries((current) => {
-      current.forEach(
-        (summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl),
+    try {
+      const projects = await db.projects.orderBy('updatedAt').reverse().toArray()
+      const selected = typeof limit === 'number' ? projects.slice(0, limit) : projects
+      const projectSummaries = await Promise.all(
+        selected.map(async (project) => {
+          const { pageCount, thumbnail } = await getProjectPageSummary(project.id)
+          return { project, pageCount, thumbnail }
+        }),
       )
-      return next
-    })
-    setLoading(false)
-  }, [limit])
+      if (loadVersion !== loadVersionRef.current) return
+      replaceSummaries(
+        projectSummaries.map(({ project, pageCount, thumbnail }) => ({
+          project,
+          pageCount,
+          thumbnailUrl: thumbnail ? URL.createObjectURL(thumbnail) : undefined,
+        })),
+      )
+    } finally {
+      if (loadVersion === loadVersionRef.current) setLoading(false)
+    }
+  }, [limit, replaceSummaries])
 
   useEffect(() => {
-    void load()
+    void load().catch(() => undefined)
     return () => {
-      setSummaries((current) => {
-        current.forEach(
-          (summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl),
-        )
-        return []
-      })
+      loadVersionRef.current += 1
+      revokeThumbnailUrls(summariesRef.current)
+      summariesRef.current = []
     }
   }, [load])
 
