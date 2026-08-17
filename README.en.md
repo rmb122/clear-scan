@@ -118,7 +118,7 @@ There is no cloud image-processing step. The first visit still downloads the app
 | Local storage     | Dexie, IndexedDB                                        |
 | File export       | pdf-lib, JSZip, Canvas encoding                         |
 | PWA               | vite-plugin-pwa, Workbox                                |
-| State and routing | Zustand, React Router                                   |
+| State and routing | React, React Router                                     |
 | Quality           | Vitest, Testing Library, Playwright, Oxlint, TypeScript |
 
 ## Local development
@@ -188,7 +188,6 @@ src/
 ├── hooks/            Local project queries
 ├── lib/              Database, geometry, detection scoring, export, and utilities
 ├── pages/            Home, scan workspace, and local history
-├── store/            Global UI state
 └── workers/          OpenCV detection, perspective, and enhancement worker
 e2e/                  Playwright end-to-end tests and image fixtures
 .github/workflows/    Automated GitHub Pages deployment

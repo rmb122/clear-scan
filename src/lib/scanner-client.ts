@@ -1,7 +1,5 @@
-import { useAppStore } from '@/store/app-store'
 import scannerWorkerUrl from '../workers/scanner.worker.ts?worker&url'
 import type {
-  DetectionResult,
   PassportLayout,
   RenderOptions,
   ScanMode,
@@ -107,9 +105,7 @@ export class ScannerClient {
       const holdMessage=(event)=>queuedMessages.push(event.data);
       self.addEventListener('message',holdMessage);
       importScripts(${JSON.stringify(openCvUrl)});
-      self.postMessage({id:'__bootstrap__',type:'progress',progress:3,label:'OpenCV 脚本已载入'});
       import(${JSON.stringify(moduleUrl)}).then(()=>{
-        self.postMessage({id:'__bootstrap__',type:'progress',progress:6,label:'图像 Worker 已启动'});
         self.removeEventListener('message',holdMessage);
         queuedMessages.forEach((data)=>self.dispatchEvent(new MessageEvent('message',{data})));
       }).catch((error)=>setTimeout(()=>{throw error}));
@@ -132,9 +128,6 @@ export class ScannerClient {
   private handleResponse(response: ScannerWorkerResponse) {
     if (response.type === 'progress') {
       const activeRequest = response.id === this.active?.message.id ? this.active : undefined
-      if (response.id === '__bootstrap__' || activeRequest) {
-        useAppStore.getState().setEngineState(response.progress, response.label)
-      }
       activeRequest?.onProgress?.(response.progress, response.label)
       return
     }
@@ -144,10 +137,8 @@ export class ScannerClient {
     if (request.timeout) window.clearTimeout(request.timeout)
     this.active = undefined
     if (response.type === 'error') {
-      useAppStore.getState().setEngineState(100, '标准图像引擎可用')
       this.rejectConsumer(request, new Error(response.message))
     } else {
-      useAppStore.getState().setEngineState(100, '本地图像引擎已就绪')
       this.resolveConsumer(request, response)
     }
     this.dispatchNext()
@@ -357,7 +348,7 @@ export class ScannerClient {
       { intent: 'detect', onProgress: requestOptions.onProgress },
     )
     if (response.type !== 'detected') throw new Error('未收到边缘识别结果')
-    return response.result as DetectionResult
+    return response.result
   }
 
   async render(

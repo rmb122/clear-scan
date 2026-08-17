@@ -37,7 +37,7 @@ import {
   updatePageWithThumbnail,
 } from '@/lib/db'
 import { DEFAULT_QUAD } from '@/lib/geometry'
-import { isAbortError, scannerClient } from '@/lib/scanner-client'
+import { createRenderCacheKey, isAbortError, scannerClient } from '@/lib/scanner-client'
 import {
   DEFAULT_ADJUSTMENTS,
   ORIGINAL_EFFECTS,
@@ -64,8 +64,19 @@ interface RenderedPreview {
   blob: Blob
 }
 
+const PREVIEW_RENDER_OPTIONS = {
+  maxEdge: 1400,
+  mimeType: 'image/jpeg',
+  quality: 0.9,
+} as const
+
 function isScanMode(value?: string): value is ScanMode {
   return value === 'id-card' || value === 'passport' || value === 'document'
+}
+
+function nextPageRole(mode: ScanMode, pages: ScanPageModel[]): PageRole {
+  if (mode !== 'id-card') return 'page'
+  return pages.some((page) => page.role === 'front') ? 'back' : 'front'
 }
 
 async function fallbackDetection(source: Blob): Promise<DetectionResult> {
@@ -91,7 +102,7 @@ export function ScanPage() {
   const workspaceRef = useRef<HTMLElement | null>(null)
   const [project, setProject] = useState<ScanProject>()
   const [pages, setPages] = useState<ScanPageModel[]>([])
-  const [active, setActive] = useState<ScanPageModel>()
+  const [activePageId, setActivePageId] = useState<string>()
   const [stage, setStage] = useState<EditorStage>('capture')
   const [passportLayout, setPassportLayoutState] = useState<PassportLayout>('data-page')
   const [busy, setBusy] = useState(false)
@@ -104,50 +115,36 @@ export function ScanPage() {
   const [preview, setPreview] = useState<RenderedPreview>()
   const activeRef = useRef<ScanPageModel | undefined>(undefined)
   const projectRef = useRef<ScanProject | undefined>(undefined)
+  const active = pages.find((page) => page.id === activePageId)
   const activeSource = active?.source
-  const activePageId = active?.id
-  const activeRenderKey = useMemo(
-    () =>
-      active
-        ? JSON.stringify([
-            active.id,
-            active.corners,
-            active.rotation,
-            active.effects,
-            active.adjustments,
-          ])
-        : undefined,
-    [active],
-  )
+  const activeRenderKey = active ? createRenderCacheKey(active, PREVIEW_RENDER_OPTIONS) : undefined
   const activePreview = preview?.pageId === activePageId ? preview : undefined
   const previewIsCurrent = Boolean(
     activePreview && activeRenderKey && activePreview.renderKey === activeRenderKey,
   )
-  const updateCropCorners = useCallback(
-    (corners: NormalizedQuad) => {
-      setActive((current) =>
-        current && current.id === activePageId
-          ? {
-              ...current,
-              corners,
-              cornerSource: 'manual',
-              cropConfirmed: false,
-              updatedAt: Date.now(),
-            }
-          : current,
-      )
+  const updateActive = useCallback(
+    (update: (page: ScanPageModel) => ScanPageModel) => {
+      if (!activePageId) return
+      setPages((current) => current.map((page) => (page.id === activePageId ? update(page) : page)))
     },
     [activePageId],
+  )
+  const updateCropCorners = useCallback(
+    (corners: NormalizedQuad) => {
+      updateActive((page) => ({
+        ...page,
+        corners,
+        cornerSource: 'manual',
+        cropConfirmed: false,
+        updatedAt: Date.now(),
+      }))
+    },
+    [updateActive],
   )
 
   const mode: ScanMode = project?.mode ?? (isScanMode(routeMode) ? routeMode : 'document')
   const sortedPages = useMemo(() => [...pages].sort((a, b) => a.order - b.order), [pages])
-  const effectivePages = useMemo(
-    () => sortedPages.map((page) => (page.id === active?.id ? active : page)),
-    [active, sortedPages],
-  )
-  const nextRole: PageRole =
-    mode === 'id-card' ? (pages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
+  const nextRole = nextPageRole(mode, pages)
   const pendingDeleteLabel = pendingDelete
     ? mode === 'id-card'
       ? pendingDelete.role === 'front'
@@ -203,9 +200,10 @@ export function ScanPage() {
           setPages(storedPages)
           setPassportLayoutState(storedProject.passportLayout ?? 'data-page')
           if (storedPages.length) {
-            setActive(storedPages[0])
+            setActivePageId(storedPages[0].id)
             setStage(storedPages[0].cropConfirmed ? 'enhance' : 'crop')
           } else {
+            setActivePageId(undefined)
             setStage('capture')
           }
         })
@@ -222,7 +220,7 @@ export function ScanPage() {
     }
     setProject(undefined)
     setPages([])
-    setActive(undefined)
+    setActivePageId(undefined)
     setStage('capture')
     setPassportLayoutState('data-page')
   }, [navigate, projectId, routeMode])
@@ -263,11 +261,7 @@ export function ScanPage() {
     const timer = window.setTimeout(() => {
       setRendering(true)
       void scannerClient
-        .render(
-          page,
-          { maxEdge: 1400, mimeType: 'image/jpeg', quality: 0.9 },
-          { intent: 'preview', signal: controller.signal },
-        )
+        .render(page, PREVIEW_RENDER_OPTIONS, { intent: 'preview', signal: controller.signal })
         .then(({ blob }) => {
           if (cancelled) return
           replacePreview({
@@ -366,12 +360,7 @@ export function ScanPage() {
               reason instanceof Error ? `${reason.message}，请手动调整四角。` : '请手动调整四角。',
           })
         }
-        const role: PageRole =
-          mode === 'id-card'
-            ? workingPages.some((page) => page.role === 'front')
-              ? 'back'
-              : 'front'
-            : 'page'
+        const role = nextPageRole(mode, workingPages)
         const now = Date.now()
         const page: ScanPageModel = {
           id: createId(),
@@ -404,7 +393,7 @@ export function ScanPage() {
       })
       setPages(workingPages)
       if (added[0]) {
-        setActive(added[0])
+        setActivePageId(added[0].id)
         setStage('crop')
       }
     } catch (reason) {
@@ -427,15 +416,14 @@ export function ScanPage() {
     if (currentThumbnail) await updatePageWithThumbnail(saved, currentThumbnail)
     else await updatePageMetadata(saved)
     await db.projects.update(project.id, { updatedAt: Date.now() })
-    const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
+    const nextPages = pages.map((page) => (page.id === saved.id ? saved : page))
     setPages(nextPages)
-    setActive(saved)
     toast.success('页面已保存到本地')
     if (
       mode === 'id-card' &&
       !nextPages.some((page) => page.role === (saved.role === 'front' ? 'back' : 'front'))
     ) {
-      setActive(undefined)
+      setActivePageId(undefined)
       setStage('capture')
       toast('请继续拍摄身份证另一面')
     }
@@ -468,14 +456,13 @@ export function ScanPage() {
     try {
       await db.pages.delete(page.id)
       scannerClient.invalidatePage(page.id)
-      const remaining = effectivePages
+      const remaining = sortedPages
         .filter((item) => item.id !== page.id)
-        .sort((a, b) => a.order - b.order)
         .map((item, index) => ({ ...item, order: index }))
       await bulkUpdatePageMetadata(remaining)
       setPages(remaining)
-      if (active?.id === page.id) {
-        setActive(remaining[0])
+      if (activePageId === page.id) {
+        setActivePageId(remaining[0]?.id)
         setStage(remaining.length ? (remaining[0].cropConfirmed ? 'enhance' : 'crop') : 'capture')
       }
       setPendingDelete(undefined)
@@ -490,7 +477,7 @@ export function ScanPage() {
   }
 
   const movePage = async (page: ScanPageModel, direction: -1 | 1) => {
-    const ordered = [...effectivePages]
+    const ordered = [...sortedPages]
     const index = ordered.findIndex((item) => item.id === page.id)
     const target = index + direction
     if (target < 0 || target >= ordered.length) return
@@ -502,7 +489,6 @@ export function ScanPage() {
     }))
     await bulkUpdatePageMetadata(reordered)
     setPages(reordered)
-    setActive((current) => (current ? reordered.find((item) => item.id === current.id) : current))
   }
 
   const redetect = async () => {
@@ -512,11 +498,12 @@ export function ScanPage() {
     try {
       const detection = await scannerClient.detect(active.source, mode, passportLayout)
       if (activeRef.current?.id !== pageId) return
-      setActive((current) =>
-        current?.id === pageId
-          ? { ...current, ...detection, cropConfirmed: false, updatedAt: Date.now() }
-          : current,
-      )
+      updateActive((page) => ({
+        ...page,
+        ...detection,
+        cropConfirmed: false,
+        updatedAt: Date.now(),
+      }))
       toast.success('已重新识别边缘')
     } catch (reason) {
       toast.error('重新识别失败', {
@@ -527,11 +514,10 @@ export function ScanPage() {
     }
   }
 
-  const flushActivePage = () => {
-    if (!active) return effectivePages
+  const persistActivePage = () => {
+    if (!active) return
     const saved = { ...active, updatedAt: Date.now() }
-    const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
-    setPages(nextPages)
+    updateActive(() => saved)
     void updatePageMetadata(saved)
       .then(() =>
         project ? db.projects.update(project.id, { updatedAt: saved.updatedAt }) : undefined,
@@ -542,60 +528,50 @@ export function ScanPage() {
           description: reason instanceof Error ? reason.message : '浏览器无法写入本地存储',
         })
       })
-    return nextPages
   }
 
   const selectPage = (page: ScanPageModel) => {
-    const nextPages = flushActivePage()
-    const selected = nextPages.find((item) => item.id === page.id) ?? page
-    setActive(selected)
-    setStage(selected.cropConfirmed ? 'enhance' : 'crop')
+    persistActivePage()
+    setActivePageId(page.id)
+    setStage(page.cropConfirmed ? 'enhance' : 'crop')
   }
 
   const startCapture = () => {
-    flushActivePage()
-    setActive(undefined)
+    persistActivePage()
+    setActivePageId(undefined)
     setStage('capture')
   }
 
   const changeEffect = (category: keyof EnhancementEffects, effect: EnhancementEffect) => {
-    if (!active) return
-    setActive((current) =>
-      current?.id === active.id
-        ? {
-            ...current,
-            effects: {
-              ...current.effects,
-              [category]: effect,
-            } as EnhancementEffects,
-            updatedAt: Date.now(),
-          }
-        : current,
-    )
+    updateActive((page) => ({
+      ...page,
+      effects: {
+        ...page.effects,
+        [category]: effect,
+      } as EnhancementEffects,
+      updatedAt: Date.now(),
+    }))
   }
 
   const applyEffectPreset = (preset: 'original' | 'smart') => {
-    if (!active) return
-    setActive({
-      ...active,
+    updateActive((page) => ({
+      ...page,
       effects: {
         ...(preset === 'original' ? ORIGINAL_EFFECTS : SMART_EFFECTS),
       },
       adjustments: { ...DEFAULT_ADJUSTMENTS },
       updatedAt: Date.now(),
-    })
+    }))
   }
 
   const confirmCrop = () => {
     if (!active) return
     const confirmed = { ...active, cropConfirmed: true, updatedAt: Date.now() }
-    setActive(confirmed)
+    updateActive(() => confirmed)
     void updatePageMetadata(confirmed).catch((reason: unknown) => {
+      updateActive((page) => ({ ...page, cropConfirmed: false }))
       if (activeRef.current?.id === confirmed.id) {
         replacePreview()
-        setActive((current) =>
-          current?.id === confirmed.id ? { ...current, cropConfirmed: false } : current,
-        )
         setStage('crop')
       }
       toast.error('裁剪确认保存失败', {
@@ -611,7 +587,7 @@ export function ScanPage() {
     const unconfirmed = { ...active, cropConfirmed: false, updatedAt: Date.now() }
     replacePreview()
     setRendering(false)
-    setActive(unconfirmed)
+    updateActive(() => unconfirmed)
     void updatePageMetadata(unconfirmed).catch((reason: unknown) => {
       toast.error('裁剪状态保存失败', {
         id: 'crop-confirmation-save-error',
@@ -639,7 +615,7 @@ export function ScanPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{MODE_LABELS[mode]}</Badge>
                   <span className="text-[10px] font-semibold text-muted-foreground">
-                    {effectivePages.length} 页
+                    {sortedPages.length} 页
                   </span>
                 </div>
                 {project ? (
@@ -655,7 +631,7 @@ export function ScanPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {project && <ExportDialog project={project} pages={effectivePages} />}
+              {project && <ExportDialog project={project} pages={sortedPages} />}
             </div>
           </div>
         </div>
@@ -695,20 +671,20 @@ export function ScanPage() {
           <aside className="hidden border-r border-border bg-card lg:block lg:h-full">
             <PageRail
               mode={mode}
-              pages={effectivePages}
-              activeId={active?.id}
+              pages={sortedPages}
+              activeId={activePageId}
               onSelect={selectPage}
               onAdd={startCapture}
               onDelete={setPendingDelete}
               onMove={(page, direction) => void movePage(page, direction)}
             />
           </aside>
-          {effectivePages.length > 0 && (
+          {sortedPages.length > 0 && (
             <div className="border-b border-border bg-card lg:hidden">
               <PageRail
                 mode={mode}
-                pages={effectivePages}
-                activeId={active?.id}
+                pages={sortedPages}
+                activeId={activePageId}
                 onSelect={selectPage}
                 onAdd={startCapture}
                 onDelete={setPendingDelete}
@@ -854,24 +830,19 @@ export function ScanPage() {
                       onEffectChange={changeEffect}
                       onPresetApply={applyEffectPreset}
                       onAdjustmentsChange={(adjustments) =>
-                        setActive({
-                          ...active,
+                        updateActive((page) => ({
+                          ...page,
                           adjustments,
                           updatedAt: Date.now(),
-                        })
+                        }))
                       }
                       onRotate={(direction) =>
-                        setActive((current) =>
-                          current?.id === active.id
-                            ? {
-                                ...current,
-                                rotation: ((current.rotation +
-                                  (direction === 'clockwise' ? 90 : 270)) %
-                                  360) as ScanPageModel['rotation'],
-                                updatedAt: Date.now(),
-                              }
-                            : current,
-                        )
+                        updateActive((page) => ({
+                          ...page,
+                          rotation: ((page.rotation + (direction === 'clockwise' ? 90 : 270)) %
+                            360) as ScanPageModel['rotation'],
+                          updatedAt: Date.now(),
+                        }))
                       }
                     />
                     <div className="mt-6 grid grid-cols-2 gap-2">

@@ -118,7 +118,7 @@ flowchart LR
 | 本地存储   | Dexie、IndexedDB                                        |
 | 文件导出   | pdf-lib、JSZip、Canvas 编码                             |
 | PWA        | vite-plugin-pwa、Workbox                                |
-| 状态与路由 | Zustand、React Router                                   |
+| 状态与路由 | React、React Router                                     |
 | 质量保障   | Vitest、Testing Library、Playwright、Oxlint、TypeScript |
 
 ## 本地开发
@@ -188,7 +188,6 @@ src/
 ├── hooks/            本地项目查询逻辑
 ├── lib/              数据库、几何、检测评分、导出与工具函数
 ├── pages/            首页、扫描工作区和历史记录
-├── store/            全局界面状态
 └── workers/          OpenCV 检测、透视和图像增强 Worker
 e2e/                  Playwright 端到端测试与图片夹具
 .github/workflows/    GitHub Pages 自动部署

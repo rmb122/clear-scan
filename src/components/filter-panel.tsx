@@ -181,10 +181,6 @@ export function FilterPanel({
       : []),
   ]
 
-  const selectEffect = (category: EffectCategory, value: EnhancementEffect) => {
-    onEffectChange(category, value)
-  }
-
   return (
     <div className="space-y-5">
       {glareLevel !== 'none' && (
@@ -269,7 +265,7 @@ export function FilterPanel({
                       type="button"
                       aria-label={option.label}
                       aria-pressed={selected}
-                      onClick={() => selectEffect(group.key, option.value)}
+                      onClick={() => onEffectChange(group.key, option.value)}
                       className={cn(
                         'relative min-h-10 rounded-xl border px-2 py-2 text-xs font-semibold transition',
                         group.key === 'shadow' && option.value === 'none' && 'col-span-2',

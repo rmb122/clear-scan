@@ -138,22 +138,6 @@ function scaledOdd(value: number, minimum: number, maximum: number) {
   return result
 }
 
-function medianIntensity(mat: Mat) {
-  const histogram = new Uint32Array(256)
-  const step = Math.max(1, Math.floor(mat.data.length / 350_000))
-  let samples = 0
-  for (let index = 0; index < mat.data.length; index += step) {
-    histogram[mat.data[index]] += 1
-    samples += 1
-  }
-  let cumulative = 0
-  for (let value = 0; value < histogram.length; value += 1) {
-    cumulative += histogram[value]
-    if (cumulative >= samples / 2) return value
-  }
-  return 128
-}
-
 function closeEdgeMap(cv: CV, edges: Mat, kernel: Mat) {
   const closed = new cv.Mat()
   const dilated = new cv.Mat()
@@ -172,7 +156,7 @@ function createCannyMap(cv: CV, gray: Mat, kernel: Mat) {
   const edges = new cv.Mat()
   try {
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT)
-    const median = medianIntensity(blurred)
+    const median = percentile(blurred.data, 0.5, 350_000)
     const lower = clamp(median * 0.66, 18, 110)
     const upper = Math.max(lower + 30, clamp(median * 1.33, 70, 240))
     cv.Canny(blurred, edges, lower, upper)
@@ -1024,21 +1008,15 @@ function applyGlareReduction(cv: CV, source: Mat) {
   }
 }
 
-function percentile(data: Uint8Array, fraction: number) {
+function percentile(data: Uint8Array, fraction: number, sampleLimit = 500_000) {
   const histogram = new Uint32Array(256)
-  const step = Math.max(1, Math.floor(data.length / 500_000))
+  const step = Math.max(1, Math.floor(data.length / sampleLimit))
   let count = 0
   for (let index = 0; index < data.length; index += step) {
     histogram[data[index]] += 1
     count += 1
   }
-  const target = count * fraction
-  let total = 0
-  for (let value = 0; value < 256; value += 1) {
-    total += histogram[value]
-    if (total >= target) return value
-  }
-  return 255
+  return histogramPercentile(histogram, count, fraction)
 }
 
 function histogramPercentile(histogram: Uint32Array, count: number, fraction: number) {
