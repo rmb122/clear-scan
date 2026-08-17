@@ -35,11 +35,11 @@ The project has no image-upload API and requires no account. Original images and
 
 ### Three scan modes
 
-| Mode | Main capabilities | Typical output |
-| --- | --- | --- |
-| ID card | Guided capture for both sides, standard card-ratio detection, and perspective correction | Both sides arranged as large images on one A4 page; JPG, PNG, or PDF |
-| Passport | Dedicated ratios for a single biodata page or a full two-page spread | JPG, PNG, or PDF; multi-page projects can use PDF or ZIP |
-| Document | Batch import, continuous capture, page reordering, and multi-page management | Single-page JPG/PNG, multi-page PDF, or a ZIP of JPG files |
+| Mode     | Main capabilities                                                                        | Typical output                                                       |
+| -------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| ID card  | Guided capture for both sides, standard card-ratio detection, and perspective correction | Both sides arranged as large images on one A4 page; JPG, PNG, or PDF |
+| Passport | Dedicated ratios for a single biodata page or a full two-page spread                     | JPG, PNG, or PDF; multi-page projects can use PDF or ZIP             |
+| Document | Batch import, continuous capture, page reordering, and multi-page management             | Single-page JPG/PNG, multi-page PDF, or a ZIP of JPG files           |
 
 > The A4 ID-card layout prioritizes legibility by enlarging both sides. It is not a 1:1 physical-size photocopy.
 
@@ -69,12 +69,12 @@ The project has no image-upload API and requires no account. Original images and
 - Export is generated locally without a server-side conversion service.
 - Exported JPG and PNG files are re-encoded and do not retain the source photo's EXIF or location metadata.
 
-| Format | Best for | Notes |
-| --- | --- | --- |
-| PDF | Document archiving and multi-page scans | Documents can fit their content or use uniform A4 pages; ID cards use one enlarged A4 sheet |
-| JPG | A single page or a combined two-sided ID image | Broad compatibility with lossy compression |
-| PNG | A single page or a combined two-sided ID image | Lossless, but generally larger |
-| ZIP | Multi-page passport or document projects | Renders every page as a separate JPG and packages them together |
+| Format | Best for                                       | Notes                                                                                       |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| PDF    | Document archiving and multi-page scans        | Documents can fit their content or use uniform A4 pages; ID cards use one enlarged A4 sheet |
+| JPG    | A single page or a combined two-sided ID image | Broad compatibility with lossy compression                                                  |
+| PNG    | A single page or a combined two-sided ID image | Lossless, but generally larger                                                              |
+| ZIP    | Multi-page passport or document projects       | Renders every page as a separate JPG and packages them together                             |
 
 ## Workflow
 
@@ -110,16 +110,16 @@ There is no cloud image-processing step. The first visit still downloads the app
 
 ## Technology stack
 
-| Area | Technology |
-| --- | --- |
-| UI | React 19, TypeScript, Tailwind CSS 4, Radix UI, Lucide |
-| Build | Vite 8 |
-| Image processing | OpenCV.js, Web Worker, OffscreenCanvas |
-| Local storage | Dexie, IndexedDB |
-| File export | pdf-lib, JSZip, Canvas encoding |
-| PWA | vite-plugin-pwa, Workbox |
-| State and routing | Zustand, React Router |
-| Quality | Vitest, Testing Library, Playwright, Oxlint, TypeScript |
+| Area              | Technology                                              |
+| ----------------- | ------------------------------------------------------- |
+| UI                | React 19, TypeScript, Tailwind CSS 4, Radix UI, Lucide  |
+| Build             | Vite 8                                                  |
+| Image processing  | OpenCV.js, Web Worker, OffscreenCanvas                  |
+| Local storage     | Dexie, IndexedDB                                        |
+| File export       | pdf-lib, JSZip, Canvas encoding                         |
+| PWA               | vite-plugin-pwa, Workbox                                |
+| State and routing | Zustand, React Router                                   |
+| Quality           | Vitest, Testing Library, Playwright, Oxlint, TypeScript |
 
 ## Local development
 

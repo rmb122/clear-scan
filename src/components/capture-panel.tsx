@@ -40,12 +40,15 @@ export function CapturePanel({
 
   const receive = (list: FileList | null) => {
     if (!list?.length) return
-    const files = Array.from(list).filter((file) => file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name))
+    const files = Array.from(list).filter(
+      (file) => file.type.startsWith('image/') || /\.(heic|heif)$/i.test(file.name),
+    )
     if (!files.length) {
       toast.error('没有可用的图片', { description: '请选择 JPEG、PNG、WebP、HEIC 或 HEIF 文件。' })
       return
     }
-    if (files.length < list.length) toast.warning(`已跳过 ${list.length - files.length} 个不支持的文件`)
+    if (files.length < list.length)
+      toast.warning(`已跳过 ${list.length - files.length} 个不支持的文件`)
     if (mode !== 'document' && files.length > 1) toast('证件模式每次只添加一张照片')
     onFiles(mode === 'document' ? files : files.slice(0, 1))
   }
@@ -82,7 +85,10 @@ export function CapturePanel({
       )}
 
       <Card
-        className={cn('mt-7 w-full border-dashed p-3 transition', dragging && 'border-primary bg-primary/[.03]')}
+        className={cn(
+          'mt-7 w-full border-dashed p-3 transition',
+          dragging && 'border-primary bg-primary/[.03]',
+        )}
         onDragOver={(event) => {
           event.preventDefault()
           setDragging(true)
@@ -107,7 +113,12 @@ export function CapturePanel({
               <Camera />
               系统相机拍摄
             </Button>
-            <Button size="lg" variant="outline" disabled={busy} onClick={() => uploadInput.current?.click()}>
+            <Button
+              size="lg"
+              variant="outline"
+              disabled={busy}
+              onClick={() => uploadInput.current?.click()}
+            >
               <Images />
               从相册或电脑上传
             </Button>
@@ -151,7 +162,11 @@ export function CapturePanel({
           event.currentTarget.value = ''
         }}
       />
-      <CameraDialog open={webcamOpen} onOpenChange={setWebcamOpen} onCapture={(file) => onFiles([file])} />
+      <CameraDialog
+        open={webcamOpen}
+        onOpenChange={setWebcamOpen}
+        onCapture={(file) => onFiles([file])}
+      />
     </div>
   )
 }

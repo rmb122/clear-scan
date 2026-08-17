@@ -109,7 +109,9 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
       <DialogContent>
         <DialogHeader>
           <DialogTitle>导出扫描结果</DialogTitle>
-          <DialogDescription>文件在本机生成，导出图片不会携带原照片的 EXIF 或定位信息。</DialogDescription>
+          <DialogDescription>
+            文件在本机生成，导出图片不会携带原照片的 EXIF 或定位信息。
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           {formats
@@ -133,7 +135,9 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
                 </span>
                 <span>
                   <span className="block text-sm font-bold">{item.label}</span>
-                  <span className="mt-0.5 block text-[10px] text-muted-foreground">{item.description}</span>
+                  <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                    {item.description}
+                  </span>
                 </span>
               </button>
             ))}
@@ -157,7 +161,10 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
                 type="button"
                 aria-pressed={layout === 'a4'}
                 onClick={() => setLayout('a4')}
-                className={cn('h-9 rounded-lg text-xs font-semibold', layout === 'a4' && 'bg-background shadow-sm')}
+                className={cn(
+                  'h-9 rounded-lg text-xs font-semibold',
+                  layout === 'a4' && 'bg-background shadow-sm',
+                )}
               >
                 统一 A4
               </button>

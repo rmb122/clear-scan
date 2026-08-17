@@ -3,7 +3,13 @@ import { Download, MoreHorizontal, RefreshCw, Share, WifiOff } from 'lucide-reac
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -88,17 +94,30 @@ export function InstallButton() {
 
   return (
     <>
-      <Button variant="ghost" size="icon" onClick={() => void install()} className="sm:hidden" aria-label="安装应用">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => void install()}
+        className="sm:hidden"
+        aria-label="安装应用"
+      >
         <Download />
       </Button>
-      <Button variant="outline" size="sm" onClick={() => void install()} className="hidden text-sm sm:inline-flex">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => void install()}
+        className="hidden text-sm sm:inline-flex"
+      >
         <Download /> 安装应用
       </Button>
       <Dialog open={showIos} onOpenChange={setShowIos}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>添加到主屏幕</DialogTitle>
-            <DialogDescription>安装后可像普通 App 一样打开，并在完成首次缓存后离线扫描。</DialogDescription>
+            <DialogDescription>
+              安装后可像普通 App 一样打开，并在完成首次缓存后离线扫描。
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 rounded-2xl bg-muted p-4 text-sm leading-6">
             <p className="flex gap-3">

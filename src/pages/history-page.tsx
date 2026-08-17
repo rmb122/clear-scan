@@ -1,11 +1,26 @@
 import { useMemo, useState } from 'react'
-import { CreditCard, FileText, LoaderCircle, Plane, ScanLine, Search, ShieldAlert, Trash2 } from 'lucide-react'
+import {
+  CreditCard,
+  FileText,
+  LoaderCircle,
+  Plane,
+  ScanLine,
+  Search,
+  ShieldAlert,
+  Trash2,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ProjectCard } from '@/components/project-card'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useProjectSummaries } from '@/hooks/use-projects'
 import { clearScannerData, deleteProject } from '@/lib/db'
 import type { ScanMode } from '@/lib/types'
@@ -66,7 +81,9 @@ export function HistoryPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[.18em] text-primary">Local library</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">扫描记录</h1>
-          <p className="mt-2 text-sm text-muted-foreground">所有项目只保存在此设备的当前浏览器中。</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            所有项目只保存在此设备的当前浏览器中。
+          </p>
         </div>
         {summaries.length > 0 && (
           <Button variant="destructive" disabled={clearing} onClick={() => setClearOpen(true)}>
@@ -120,7 +137,9 @@ export function HistoryPage() {
             <ScanLine />
           </span>
           <h2 className="mt-4 font-semibold">还没有扫描记录</h2>
-          <p className="mt-1 text-sm text-muted-foreground">扫描第一份文档后，会自动保存在当前浏览器中。</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            扫描第一份文档后，会自动保存在当前浏览器中。
+          </p>
           <Button asChild className="mt-5">
             <Link to="/scan/document">开始第一次扫描</Link>
           </Button>
@@ -128,7 +147,11 @@ export function HistoryPage() {
       ) : filtered.length ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {filtered.map((summary) => (
-            <ProjectCard key={summary.project.id} summary={summary} onMenu={() => setDeleteId(summary.project.id)} />
+            <ProjectCard
+              key={summary.project.id}
+              summary={summary}
+              onMenu={() => setDeleteId(summary.project.id)}
+            />
           ))}
         </div>
       ) : (
@@ -143,7 +166,9 @@ export function HistoryPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>删除这个扫描项目？</DialogTitle>
-            <DialogDescription>原图、裁剪设置和本地缩略图都会永久移除，此操作无法撤销。</DialogDescription>
+            <DialogDescription>
+              原图、裁剪设置和本地缩略图都会永久移除，此操作无法撤销。
+            </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDeleteId(undefined)}>

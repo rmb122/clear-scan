@@ -21,9 +21,17 @@ interface RenderedPage {
 const A4_POINTS = { width: 595.28, height: 841.89 }
 const A4_PIXELS = { width: 2480, height: 3508 }
 
-async function canvasToBlob(canvas: HTMLCanvasElement, mimeType: 'image/jpeg' | 'image/png', quality = 0.94) {
+async function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mimeType: 'image/jpeg' | 'image/png',
+  quality = 0.94,
+) {
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('无法生成导出图片'))), mimeType, quality)
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('无法生成导出图片'))),
+      mimeType,
+      quality,
+    )
   })
 }
 
@@ -71,13 +79,7 @@ async function composeIdCard(
     layout.front.width,
     layout.front.height,
   )
-  context.drawImage(
-    backBitmap,
-    layout.back.x,
-    layout.back.y,
-    layout.back.width,
-    layout.back.height,
-  )
+  context.drawImage(backBitmap, layout.back.x, layout.back.y, layout.back.width, layout.back.height)
   frontBitmap.close()
   backBitmap.close()
 
@@ -95,11 +97,17 @@ async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, force
 
   for (const rendered of renderedPages) {
     const bytes = await rendered.blob.arrayBuffer()
-    const image = rendered.blob.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
+    const image =
+      rendered.blob.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
     const useA4 = forceA4 || layout === 'a4'
     if (useA4) {
       const page = pdf.addPage([A4_POINTS.width, A4_POINTS.height])
-      const placement = fitWithin(rendered.width, rendered.height, A4_POINTS.width - 48, A4_POINTS.height - 48)
+      const placement = fitWithin(
+        rendered.width,
+        rendered.height,
+        A4_POINTS.width - 48,
+        A4_POINTS.height - 48,
+      )
       page.drawImage(image, {
         x: placement.x + 24,
         y: A4_POINTS.height - placement.y - placement.height - 24,
@@ -117,7 +125,10 @@ async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, force
   }
 
   const bytes = await pdf.save()
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer
   return new Blob([buffer], { type: 'application/pdf' })
 }
 

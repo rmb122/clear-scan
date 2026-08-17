@@ -1,4 +1,12 @@
-import { AlertTriangle, Check, ChevronDown, RotateCcw, RotateCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  RotateCcw,
+  RotateCw,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -181,7 +189,9 @@ export function FilterPanel({
           },
         ]
       : []),
-    ...(effects.detail === 'sharpen' ? [{ key: 'sharpness' as const, label: '锐化强度', min: 0, max: 100 }] : []),
+    ...(effects.detail === 'sharpen'
+      ? [{ key: 'sharpness' as const, label: '锐化强度', min: 0, max: 100 }]
+      : []),
   ]
 
   const selectEffect = (category: EffectCategory, value: EnhancementEffect) => {
@@ -323,13 +333,20 @@ export function FilterPanel({
         </summary>
         <div className="border-t border-border/70 px-4 pb-4 pt-4">
           <div className="mb-4 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={() => onAdjustmentsChange({ ...DEFAULT_ADJUSTMENTS })}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onAdjustmentsChange({ ...DEFAULT_ADJUSTMENTS })}
+            >
               重置微调
             </Button>
           </div>
           <div className="space-y-5">
             {adjustmentRows.map((row) => (
-              <label key={row.key} className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-3 text-xs">
+              <label
+                key={row.key}
+                className="grid grid-cols-[4rem_1fr_2.5rem] items-center gap-3 text-xs"
+              >
                 <span className="font-semibold text-muted-foreground">{row.label}</span>
                 <DeferredAdjustmentSlider
                   label={row.label}
@@ -345,7 +362,11 @@ export function FilterPanel({
       </details>
 
       <div className="grid grid-cols-2 gap-2">
-        <Button aria-label="逆时针旋转 90°" variant="outline" onClick={() => onRotate('counterclockwise')}>
+        <Button
+          aria-label="逆时针旋转 90°"
+          variant="outline"
+          onClick={() => onRotate('counterclockwise')}
+        >
           <RotateCcw />
           逆时针 90°
         </Button>

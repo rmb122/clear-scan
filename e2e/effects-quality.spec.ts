@@ -17,7 +17,9 @@ async function waitForPreviewChange(page: Page, previous?: string | null) {
   await expect(image).toBeVisible({ timeout: 120_000 })
   if (previous) await expect.poll(() => image.getAttribute('src')).not.toBe(previous)
   await expect
-    .poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0))
+    .poll(() =>
+      image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0),
+    )
     .toBe(true)
   return image.getAttribute('src')
 }
@@ -50,7 +52,12 @@ async function createQualityFixture(page: Page) {
     context.fillRect(x(0.13), y(0.42), x(0.72) - x(0.13), y(0.438) - y(0.42))
     context.fillStyle = '#66736f'
     for (let row = 0; row < 4; row += 1) {
-      context.fillRect(x(0.13), y(0.52 + row * 0.045), x(0.78 - row * 0.06) - x(0.13), Math.max(2, y(0.526) - y(0.52)))
+      context.fillRect(
+        x(0.13),
+        y(0.52 + row * 0.045),
+        x(0.78 - row * 0.06) - x(0.13),
+        Math.max(2, y(0.526) - y(0.52)),
+      )
     }
     context.fillStyle = '#328d72'
     context.fillRect(x(0.15), y(0.69), x(0.31) - x(0.15), y(0.78) - y(0.69))
@@ -83,14 +90,23 @@ async function createQualityFixture(page: Page) {
     context.fillStyle = foldShadow
     context.fillRect(0, y(0.7), width, height - y(0.7))
 
-    const glare = context.createRadialGradient(x(0.75), y(0.165), 2, x(0.75), y(0.165), x(0.1) - x(0))
+    const glare = context.createRadialGradient(
+      x(0.75),
+      y(0.165),
+      2,
+      x(0.75),
+      y(0.165),
+      x(0.1) - x(0),
+    )
     glare.addColorStop(0, 'rgba(255,255,255,.96)')
     glare.addColorStop(0.42, 'rgba(255,255,255,.72)')
     glare.addColorStop(1, 'rgba(255,255,255,0)')
     context.fillStyle = glare
     context.fillRect(x(0.62), y(0.1), x(0.86) - x(0.62), y(0.23) - y(0.1))
 
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
+    const blob = await new Promise<Blob>((resolve) =>
+      canvas.toBlob((value) => resolve(value!), 'image/png'),
+    )
     return Array.from(new Uint8Array(await blob.arrayBuffer()))
   })
   return Buffer.from(bytes)
@@ -110,7 +126,9 @@ async function createEvenLightingFixture(page: Page) {
     }
     context.fillStyle = '#a94f45'
     context.fillRect(120, 110, 150, 64)
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
+    const blob = await new Promise<Blob>((resolve) =>
+      canvas.toBlob((value) => resolve(value!), 'image/png'),
+    )
     return Array.from(new Uint8Array(await blob.arrayBuffer()))
   })
   return Buffer.from(bytes)
@@ -143,7 +161,9 @@ async function createBrightDominantFixture(page: Page) {
     context.fillStyle = lighting
     context.fillRect(0, 0, canvas.width, canvas.height)
 
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
+    const blob = await new Promise<Blob>((resolve) =>
+      canvas.toBlob((value) => resolve(value!), 'image/png'),
+    )
     return Array.from(new Uint8Array(await blob.arrayBuffer()))
   })
   return Buffer.from(bytes)
@@ -357,7 +377,9 @@ test('desktop and mobile render market-style document enhancement', async ({ pag
   expect(smart.redMark.saturation).toBeGreaterThan(original.redMark.saturation)
   expect(smart.redHalo.luma).toBeGreaterThan(242)
   expect(smart.redHalo.saturation).toBeLessThan(5)
-  expect(smart.lowAround.luma - smart.lowInk.luma).toBeGreaterThan(original.lowAround.luma - original.lowInk.luma)
+  expect(smart.lowAround.luma - smart.lowInk.luma).toBeGreaterThan(
+    original.lowAround.luma - original.lowInk.luma,
+  )
 })
 
 test('brightness balance leaves evenly lit scans stable', async ({ page }) => {

@@ -35,7 +35,11 @@ export function CameraDialog({
     setError(undefined)
     if (!navigator.mediaDevices?.getUserMedia) {
       setLoading(false)
-      setError(window.isSecureContext ? '当前浏览器没有提供网页摄像头接口' : '网页摄像头需要 HTTPS 或 localhost 环境')
+      setError(
+        window.isSecureContext
+          ? '当前浏览器没有提供网页摄像头接口'
+          : '网页摄像头需要 HTTPS 或 localhost 环境',
+      )
       return
     }
     void navigator.mediaDevices
@@ -91,7 +95,11 @@ export function CameraDialog({
         if (!context) throw new Error('无法截取摄像头画面')
         context.drawImage(video, 0, 0, canvas.width, canvas.height)
         blob = await new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob((value) => (value ? resolve(value) : reject(new Error('拍摄失败'))), 'image/jpeg', 0.95),
+          canvas.toBlob(
+            (value) => (value ? resolve(value) : reject(new Error('拍摄失败'))),
+            'image/jpeg',
+            0.95,
+          ),
         )
       }
       onCapture(new File([blob], `camera-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' }))
@@ -139,7 +147,11 @@ export function CameraDialog({
             onClick={() => void capture()}
             className="size-14 rounded-full p-0 ring-4 ring-white/20"
           >
-            {capturing ? <LoaderCircle className="size-6 animate-spin" /> : <Camera className="size-6" />}
+            {capturing ? (
+              <LoaderCircle className="size-6 animate-spin" />
+            ) : (
+              <Camera className="size-6" />
+            )}
             <span className="sr-only">{capturing ? '正在拍照' : '拍照'}</span>
           </Button>
         </div>

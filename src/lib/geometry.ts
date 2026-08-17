@@ -24,12 +24,16 @@ export function orderPoints(points: Point[]): NormalizedQuad {
     (sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }),
     { x: 0, y: 0 },
   )
-  const clockwise = [...points].sort((left, right) => (
-    Math.atan2(left.y - center.y, left.x - center.x) - Math.atan2(right.y - center.y, right.x - center.x)
-  ))
-  const topLeftIndex = clockwise.reduce((bestIndex, point, index) => (
-    point.x + point.y < clockwise[bestIndex].x + clockwise[bestIndex].y ? index : bestIndex
-  ), 0)
+  const clockwise = [...points].sort(
+    (left, right) =>
+      Math.atan2(left.y - center.y, left.x - center.x) -
+      Math.atan2(right.y - center.y, right.x - center.x),
+  )
+  const topLeftIndex = clockwise.reduce(
+    (bestIndex, point, index) =>
+      point.x + point.y < clockwise[bestIndex].x + clockwise[bestIndex].y ? index : bestIndex,
+    0,
+  )
   const ordered = [...clockwise.slice(topLeftIndex), ...clockwise.slice(0, topLeftIndex)]
 
   return ordered.map((point) => ({

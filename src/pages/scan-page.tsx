@@ -100,12 +100,20 @@ export function ScanPage() {
   const activeRenderKey = useMemo(
     () =>
       active
-        ? JSON.stringify([active.id, active.corners, active.rotation, active.effects, active.adjustments])
+        ? JSON.stringify([
+            active.id,
+            active.corners,
+            active.rotation,
+            active.effects,
+            active.adjustments,
+          ])
         : undefined,
     [active],
   )
   const activePreview = preview?.pageId === activePageId ? preview : undefined
-  const previewIsCurrent = Boolean(activePreview && activeRenderKey && activePreview.renderKey === activeRenderKey)
+  const previewIsCurrent = Boolean(
+    activePreview && activeRenderKey && activePreview.renderKey === activeRenderKey,
+  )
   const updateCropCorners = useCallback(
     (corners: NormalizedQuad) => {
       setActive((current) =>
@@ -156,7 +164,8 @@ export function ScanPage() {
   )
 
   useEffect(() => {
-    if (stage === 'capture' || !activePageId || window.matchMedia('(min-width: 1024px)').matches) return
+    if (stage === 'capture' || !activePageId || window.matchMedia('(min-width: 1024px)').matches)
+      return
     const frame = window.requestAnimationFrame(() => {
       workspaceRef.current?.scrollIntoView({ block: 'start' })
     })
@@ -314,11 +323,16 @@ export function ScanPage() {
         } catch (reason) {
           detection = await fallbackDetection(file)
           toast.warning('没有可靠识别到文档边缘', {
-            description: reason instanceof Error ? `${reason.message}，请手动调整四角。` : '请手动调整四角。',
+            description:
+              reason instanceof Error ? `${reason.message}，请手动调整四角。` : '请手动调整四角。',
           })
         }
         const role: PageRole =
-          mode === 'id-card' ? (workingPages.some((page) => page.role === 'front') ? 'back' : 'front') : 'page'
+          mode === 'id-card'
+            ? workingPages.some((page) => page.role === 'front')
+              ? 'back'
+              : 'front'
+            : 'page'
         const now = Date.now()
         const page: ScanPageModel = {
           id: createId(),
@@ -377,7 +391,10 @@ export function ScanPage() {
     setPages(nextPages)
     setActive(saved)
     toast.success('页面已保存到本地')
-    if (mode === 'id-card' && !nextPages.some((page) => page.role === (saved.role === 'front' ? 'back' : 'front'))) {
+    if (
+      mode === 'id-card' &&
+      !nextPages.some((page) => page.role === (saved.role === 'front' ? 'back' : 'front'))
+    ) {
       setActive(undefined)
       setStage('capture')
       toast('请继续拍摄身份证另一面')
@@ -450,7 +467,9 @@ export function ScanPage() {
       const detection = await scannerClient.detect(active.source, mode, passportLayout)
       if (activeRef.current?.id !== pageId) return
       setActive((current) =>
-        current?.id === pageId ? { ...current, ...detection, cropConfirmed: false, updatedAt: Date.now() } : current,
+        current?.id === pageId
+          ? { ...current, ...detection, cropConfirmed: false, updatedAt: Date.now() }
+          : current,
       )
       toast.success('已重新识别边缘')
     } catch (reason) {
@@ -468,7 +487,9 @@ export function ScanPage() {
     const nextPages = effectivePages.map((page) => (page.id === saved.id ? saved : page))
     setPages(nextPages)
     void updatePageMetadata(saved)
-      .then(() => (project ? db.projects.update(project.id, { updatedAt: saved.updatedAt }) : undefined))
+      .then(() =>
+        project ? db.projects.update(project.id, { updatedAt: saved.updatedAt }) : undefined,
+      )
       .catch((reason: unknown) => {
         toast.error('页面保存失败', {
           id: 'scan-flush-error',
@@ -526,7 +547,9 @@ export function ScanPage() {
     void updatePageMetadata(confirmed).catch((reason: unknown) => {
       if (activeRef.current?.id === confirmed.id) {
         replacePreview()
-        setActive((current) => (current?.id === confirmed.id ? { ...current, cropConfirmed: false } : current))
+        setActive((current) =>
+          current?.id === confirmed.id ? { ...current, cropConfirmed: false } : current,
+        )
         setStage('crop')
       }
       toast.error('裁剪确认保存失败', {
@@ -558,13 +581,20 @@ export function ScanPage() {
         <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/')} aria-label="返回首页">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/')}
+                aria-label="返回首页"
+              >
                 <ArrowLeft />
               </Button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{MODE_LABELS[mode]}</Badge>
-                  <span className="text-[10px] font-semibold text-muted-foreground">{effectivePages.length} 页</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground">
+                    {effectivePages.length} 页
+                  </span>
                 </div>
                 {project ? (
                   <input
@@ -594,7 +624,9 @@ export function ScanPage() {
               { key: 'enhance', label: '增强与导出', icon: Sparkles },
             ].map((step, index) => (
               <div key={step.key} className="contents">
-                <span className={cn('flex items-center gap-1.5', stage === step.key && 'text-primary')}>
+                <span
+                  className={cn('flex items-center gap-1.5', stage === step.key && 'text-primary')}
+                >
                   <span
                     className={cn(
                       'grid size-6 place-items-center rounded-full bg-muted',
@@ -694,7 +726,11 @@ export function ScanPage() {
                       />
                     </div>
                   ) : (
-                    <div className="absolute inset-0 grid place-items-center p-4" role="status" aria-live="polite">
+                    <div
+                      className="absolute inset-0 grid place-items-center p-4"
+                      role="status"
+                      aria-live="polite"
+                    >
                       <div className="flex flex-col items-center gap-3 text-white/75">
                         <LoaderCircle className="size-8 animate-spin" />
                         <span className="text-xs font-semibold">正在生成增强预览</span>
@@ -715,7 +751,9 @@ export function ScanPage() {
                     <div>
                       <Badge
                         variant={
-                          active.cornerSource === 'detected' || active.cornerSource === 'manual' ? 'default' : 'warning'
+                          active.cornerSource === 'detected' || active.cornerSource === 'manual'
+                            ? 'default'
+                            : 'warning'
                         }
                       >
                         {active.cornerSource === 'detected'
@@ -739,7 +777,12 @@ export function ScanPage() {
                         <li>· 旋转可以在下一步继续调整</li>
                       </ul>
                     </div>
-                    <Button variant="outline" className="w-full" disabled={busy} onClick={() => void redetect()}>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={busy}
+                      onClick={() => void redetect()}
+                    >
                       <RotateCcw />
                       重新识别
                     </Button>
@@ -775,7 +818,8 @@ export function ScanPage() {
                           current?.id === active.id
                             ? {
                                 ...current,
-                                rotation: ((current.rotation + (direction === 'clockwise' ? 90 : 270)) %
+                                rotation: ((current.rotation +
+                                  (direction === 'clockwise' ? 90 : 270)) %
                                   360) as ScanPageModel['rotation'],
                                 updatedAt: Date.now(),
                               }
@@ -788,7 +832,10 @@ export function ScanPage() {
                         <Crop />
                         调整边缘
                       </Button>
-                      <Button disabled={!previewIsCurrent || rendering} onClick={() => void saveActive()}>
+                      <Button
+                        disabled={!previewIsCurrent || rendering}
+                        onClick={() => void saveActive()}
+                      >
                         <FileCheck2 />
                         保存页面
                       </Button>

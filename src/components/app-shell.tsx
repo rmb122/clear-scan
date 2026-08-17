@@ -13,7 +13,8 @@ const navItems = [
 
 export function AppShell() {
   const location = useLocation()
-  const scannerRoute = location.pathname.startsWith('/scan/') || location.pathname.startsWith('/project/')
+  const scannerRoute =
+    location.pathname.startsWith('/scan/') || location.pathname.startsWith('/project/')
 
   return (
     <div className="min-h-svh">

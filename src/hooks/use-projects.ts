@@ -28,7 +28,9 @@ export function useProjectSummaries(limit?: number) {
       }),
     )
     setSummaries((current) => {
-      current.forEach((summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl))
+      current.forEach(
+        (summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl),
+      )
       return next
     })
     setLoading(false)
@@ -38,7 +40,9 @@ export function useProjectSummaries(limit?: number) {
     void load()
     return () => {
       setSummaries((current) => {
-        current.forEach((summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl))
+        current.forEach(
+          (summary) => summary.thumbnailUrl && URL.revokeObjectURL(summary.thumbnailUrl),
+        )
         return []
       })
     }

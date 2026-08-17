@@ -34,7 +34,9 @@ async function storedPageState(page: Page, sourceName: string) {
   }, sourceName)
 }
 
-test('desktop and mobile shells expose useful empty, install, and fallback states', async ({ page }, testInfo) => {
+test('desktop and mobile shells expose useful empty, install, and fallback states', async ({
+  page,
+}, testInfo) => {
   for (const [route, heading] of [
     ['/', /清晰扫描仪/],
     ['/#/history', '扫描记录'],
@@ -157,7 +159,10 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   await expect(page.getByText('已预识别边缘，请人工确认')).toBeVisible()
   const firstHandleBox = await handles.first().boundingBox()
   expect(firstHandleBox).not.toBeNull()
-  await page.mouse.move(firstHandleBox!.x + firstHandleBox!.width / 2, firstHandleBox!.y + firstHandleBox!.height / 2)
+  await page.mouse.move(
+    firstHandleBox!.x + firstHandleBox!.width / 2,
+    firstHandleBox!.y + firstHandleBox!.height / 2,
+  )
   await page.mouse.down()
   await page.mouse.move(
     firstHandleBox!.x + firstHandleBox!.width / 2 + 8,
@@ -198,9 +203,13 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   })
   if (testInfo.project.name === 'mobile-chromium') {
     await expect
-      .poll(async () => Math.round((await page.locator('section.paper-grid').boundingBox())?.y ?? -1))
+      .poll(async () =>
+        Math.round((await page.locator('section.paper-grid').boundingBox())?.y ?? -1),
+      )
       .toBeGreaterThanOrEqual(63)
-    expect(Math.round((await page.locator('section.paper-grid').boundingBox())!.y)).toBeLessThanOrEqual(65)
+    expect(
+      Math.round((await page.locator('section.paper-grid').boundingBox())!.y),
+    ).toBeLessThanOrEqual(65)
   }
   const preview = page.getByRole('img', { name: '扫描增强预览' })
   const counterclockwise = page.getByRole('button', { name: '逆时针旋转 90°' })
@@ -225,7 +234,10 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   await expect(blackWhite).toHaveAttribute('aria-pressed', 'true')
 
   await page.getByRole('button', { name: '打开第 2 页' }).click()
-  await expect(page.getByRole('button', { name: '打开第 2 页' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: '打开第 2 页' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   await page.getByRole('button', { name: '打开第 1 页' }).click()
   await expect(blackWhite).toHaveAttribute('aria-pressed', 'true')
 
@@ -234,27 +246,38 @@ test('scan editing stays reachable and survives rapid page changes on desktop an
   await expect(grayscale).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('link', { name: '首页', exact: true }).click()
   await expect(page.getByRole('heading', { name: /清晰扫描仪/ })).toBeVisible()
-  await expect.poll(async () => (await storedPageState(page, 'page-one.png')).color).toBe('grayscale')
+  await expect
+    .poll(async () => (await storedPageState(page, 'page-one.png')).color)
+    .toBe('grayscale')
 
   await page.goto(projectUrl)
   await expect(page.getByText('调整扫描效果')).toBeVisible({
     timeout: 120_000,
   })
-  await expect(page.getByRole('button', { name: '灰度', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: '灰度', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   await page.getByRole('button', { name: '调整边缘' }).click()
   await expect(page.getByText('已手动调整边缘')).toBeVisible()
   await expect(page.getByRole('img', { name: '扫描增强预览' })).toHaveCount(0)
-  await expect.poll(async () => (await storedPageState(page, 'page-one.png')).cropConfirmed).toBe(false)
+  await expect
+    .poll(async () => (await storedPageState(page, 'page-one.png')).cropConfirmed)
+    .toBe(false)
   await page.reload()
   await expect(page.getByText('确认四个角点')).toBeVisible()
   await expect(page.getByText('已手动调整边缘')).toBeVisible()
   await expect(page.getByRole('img', { name: '待裁剪文档' })).toBeVisible()
   await expect
-    .poll(() => page.getByRole('img', { name: '待裁剪文档' }).evaluate((image) => image.naturalWidth))
+    .poll(() =>
+      page.getByRole('img', { name: '待裁剪文档' }).evaluate((image) => image.naturalWidth),
+    )
     .toBeGreaterThan(0)
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await expect(page.getByRole('status')).toBeVisible()
-  await expect.poll(async () => (await storedPageState(page, 'page-one.png')).cropConfirmed).toBe(true)
+  await expect
+    .poll(async () => (await storedPageState(page, 'page-one.png')).cropConfirmed)
+    .toBe(true)
   await expect(page.getByText('调整扫描效果')).toBeVisible()
   await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({
     timeout: 120_000,

@@ -51,7 +51,12 @@ describe('image package export', () => {
       updatedAt: 1,
     }
 
-    const result = await exportProject(project, [makePage('page-2', 1), makePage('page-1', 0)], 'zip', 'content')
+    const result = await exportProject(
+      project,
+      [makePage('page-2', 1), makePage('page-1', 0)],
+      'zip',
+      'content',
+    )
 
     expect(renderMock).toHaveBeenCalledTimes(2)
     expect(renderMock).toHaveBeenNthCalledWith(

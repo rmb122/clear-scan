@@ -8,7 +8,11 @@ describe('ID card sheet layout', () => {
     const layout = getIdCardSheetLayout(canvasWidth, canvasHeight)
 
     expect(layout.front.width / canvasWidth).toBeCloseTo(0.8, 2)
-    expect(layout.front).toMatchObject({ x: layout.back.x, width: layout.back.width, height: layout.back.height })
+    expect(layout.front).toMatchObject({
+      x: layout.back.x,
+      width: layout.back.width,
+      height: layout.back.height,
+    })
     expect(layout.front.y).toBeGreaterThan(0)
     expect(layout.back.y + layout.back.height).toBeLessThan(canvasHeight)
 

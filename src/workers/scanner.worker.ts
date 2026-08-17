@@ -261,12 +261,20 @@ function collectContourCandidates(cv: CV, edgeMap: Mat, sourceName: DetectionCan
           try {
             cv.approxPolyDP(contour, approximation, perimeter * epsilon, true)
             if (approximation.rows === 4 && cv.isContourConvex(approximation)) {
-              addRawCandidate(candidates, readQuad(approximation, edgeMap.cols, edgeMap.rows), sourceName)
+              addRawCandidate(
+                candidates,
+                readQuad(approximation, edgeMap.cols, edgeMap.rows),
+                sourceName,
+              )
             }
             const hullPerimeter = cv.arcLength(hull, true)
             cv.approxPolyDP(hull, hullApproximation, hullPerimeter * epsilon, true)
             if (hullApproximation.rows === 4 && cv.isContourConvex(hullApproximation)) {
-              addRawCandidate(candidates, readQuad(hullApproximation, edgeMap.cols, edgeMap.rows), sourceName)
+              addRawCandidate(
+                candidates,
+                readQuad(hullApproximation, edgeMap.cols, edgeMap.rows),
+                sourceName,
+              )
             }
           } finally {
             approximation.delete()
@@ -427,7 +435,10 @@ function extractHoughLines(cv: CV, edgeMap: Mat) {
 
 function linePairSeparation(left: DetectedLine, right: DetectedLine, normalAngle: number) {
   const normal = { x: -Math.sin(normalAngle), y: Math.cos(normalAngle) }
-  return Math.abs((right.midpoint.x - left.midpoint.x) * normal.x + (right.midpoint.y - left.midpoint.y) * normal.y)
+  return Math.abs(
+    (right.midpoint.x - left.midpoint.x) * normal.x +
+      (right.midpoint.y - left.midpoint.y) * normal.y,
+  )
 }
 
 function collectHoughCandidates(lines: DetectedLine[], width: number, height: number) {
@@ -436,14 +447,25 @@ function collectHoughCandidates(lines: DetectedLine[], width: number, height: nu
   const minimumSeparation = Math.min(width, height) * 0.14
   for (const seed of lines.slice(0, 8)) {
     const perpendicular = (seed.angle + Math.PI / 2) % Math.PI
-    const firstFamily = lines.filter((line) => lineAngleDifference(line.angle, seed.angle) <= tolerance).slice(0, 7)
-    const secondFamily = lines.filter((line) => lineAngleDifference(line.angle, perpendicular) <= tolerance).slice(0, 7)
+    const firstFamily = lines
+      .filter((line) => lineAngleDifference(line.angle, seed.angle) <= tolerance)
+      .slice(0, 7)
+    const secondFamily = lines
+      .filter((line) => lineAngleDifference(line.angle, perpendicular) <= tolerance)
+      .slice(0, 7)
     for (let first = 0; first < firstFamily.length; first += 1) {
       for (let opposite = first + 1; opposite < firstFamily.length; opposite += 1) {
-        if (linePairSeparation(firstFamily[first], firstFamily[opposite], seed.angle) < minimumSeparation) continue
+        if (
+          linePairSeparation(firstFamily[first], firstFamily[opposite], seed.angle) <
+          minimumSeparation
+        )
+          continue
         for (let second = 0; second < secondFamily.length; second += 1) {
           for (let adjacent = second + 1; adjacent < secondFamily.length; adjacent += 1) {
-            if (linePairSeparation(secondFamily[second], secondFamily[adjacent], perpendicular) < minimumSeparation)
+            if (
+              linePairSeparation(secondFamily[second], secondFamily[adjacent], perpendicular) <
+              minimumSeparation
+            )
               continue
             const points = [
               lineIntersection(firstFamily[first], secondFamily[second]),
@@ -471,10 +493,18 @@ function collectHoughCandidates(lines: DetectedLine[], width: number, height: nu
 }
 
 function distanceFromLine(point: Point, line: LineEquation) {
-  return Math.abs(line.a * point.x + line.b * point.y + line.c) / Math.max(0.001, Math.hypot(line.a, line.b))
+  return (
+    Math.abs(line.a * point.x + line.b * point.y + line.c) /
+    Math.max(0.001, Math.hypot(line.a, line.b))
+  )
 }
 
-function refineCandidateWithLines(candidate: DetectionCandidate, lines: DetectedLine[], width: number, height: number) {
+function refineCandidateWithLines(
+  candidate: DetectionCandidate,
+  lines: DetectedLine[],
+  width: number,
+  height: number,
+) {
   const pixels = candidate.corners.map((point) => ({
     x: point.x * width,
     y: point.y * height,
@@ -508,7 +538,11 @@ function refineCandidateWithLines(candidate: DetectionCandidate, lines: Detected
     x: point.x / width,
     y: point.y / height,
   }))
-  if (normalized.some((point) => point.x < -0.04 || point.x > 1.04 || point.y < -0.04 || point.y > 1.04))
+  if (
+    normalized.some(
+      (point) => point.x < -0.04 || point.x > 1.04 || point.y < -0.04 || point.y > 1.04,
+    )
+  )
     return undefined
   return orderPoints(normalized)
 }
@@ -567,10 +601,14 @@ function findDocumentQuad(
         progress: 68,
         label: '正在评分轮廓候选',
       })
-    const rawCandidates = edgeMaps.flatMap((edgeMap) => collectContourCandidates(cv, edgeMap.mat, edgeMap.source))
+    const rawCandidates = edgeMaps.flatMap((edgeMap) =>
+      collectContourCandidates(cv, edgeMap.mat, edgeMap.source),
+    )
     const targetRatio = expectedRatio(mode, passportLayout)
     let evaluatedCandidates = evaluateCandidates(rawCandidates, combined, imageData, targetRatio)
-    let candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
+    let candidates = suppressNestedCandidates(
+      deduplicateCandidates(evaluatedCandidates, source.cols, source.rows),
+    )
     if (requestId)
       post({
         id: requestId,
@@ -590,7 +628,9 @@ function findDocumentQuad(
           targetRatio,
         ),
       ]
-      candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
+      candidates = suppressNestedCandidates(
+        deduplicateCandidates(evaluatedCandidates, source.cols, source.rows),
+      )
     }
 
     const best = candidates[0]
@@ -610,9 +650,15 @@ function findDocumentQuad(
           imageData,
           targetRatio,
         )[0]
-        if (refined && refined.score >= best.score - 0.015 && refined.edgeSupport >= best.edgeSupport - 0.04) {
+        if (
+          refined &&
+          refined.score >= best.score - 0.015 &&
+          refined.edgeSupport >= best.edgeSupport - 0.04
+        ) {
           evaluatedCandidates = [refined, ...evaluatedCandidates]
-          candidates = suppressNestedCandidates(deduplicateCandidates(evaluatedCandidates, source.cols, source.rows))
+          candidates = suppressNestedCandidates(
+            deduplicateCandidates(evaluatedCandidates, source.cols, source.rows),
+          )
         }
       }
     }
@@ -644,7 +690,12 @@ function detectGlare(cv: CV, source: Mat): GlareLevel {
   }
 }
 
-async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, passportLayout?: PassportLayout) {
+async function detectDocument(
+  id: string,
+  sourceBlob: Blob,
+  mode: ScanMode,
+  passportLayout?: PassportLayout,
+) {
   post({ id, type: 'progress', progress: 8, label: '正在载入本地图像引擎' })
   await ensureOpenCv(id)
   const cv = cvRuntime
@@ -655,7 +706,9 @@ async function detectDocument(id: string, sourceBlob: Blob, mode: ScanMode, pass
   try {
     post({ id, type: 'progress', progress: 54, label: '正在比较多种边缘候选' })
     const detection = findDocumentQuad(cv, source, imageData, mode, passportLayout, id)
-    const accepted = Boolean(detection.best && detection.confidence >= DETECTION_CONFIDENCE_THRESHOLD)
+    const accepted = Boolean(
+      detection.best && detection.confidence >= DETECTION_CONFIDENCE_THRESHOLD,
+    )
     const fallback = orderPoints([
       { x: 0.04, y: 0.04 },
       { x: 0.96, y: 0.04 },
@@ -686,7 +739,11 @@ function rotateMat(cv: CV, source: Mat, rotation: ScanPage['rotation']) {
   if (rotation === 0) return source.clone()
   const output = new cv.Mat()
   const rotateCode =
-    rotation === 90 ? cv.ROTATE_90_CLOCKWISE : rotation === 180 ? cv.ROTATE_180 : cv.ROTATE_90_COUNTERCLOCKWISE
+    rotation === 90
+      ? cv.ROTATE_90_CLOCKWISE
+      : rotation === 180
+        ? cv.ROTATE_180
+        : cv.ROTATE_90_COUNTERCLOCKWISE
   cv.rotate(source, output, rotateCode)
   return output
 }
@@ -822,7 +879,11 @@ function recoverableHighlightMask(cv: CV, source: Mat): HighlightAnalysis {
         const x = pixel % width
         const y = Math.floor(pixel / width)
         const index = pixel * 4
-        const light = pixelLuma(analysis.data[index], analysis.data[index + 1], analysis.data[index + 2])
+        const light = pixelLuma(
+          analysis.data[index],
+          analysis.data[index + 1],
+          analysis.data[index + 2],
+        )
         minX = Math.min(minX, x)
         maxX = Math.max(maxX, x)
         minY = Math.min(minY, y)
@@ -928,7 +989,11 @@ function applyGlareReduction(cv: CV, source: Mat) {
           const sampleChannel = (channel: number) =>
             mix(
               mix(background.data[topLeft + channel], background.data[topRight + channel], mixX),
-              mix(background.data[bottomLeft + channel], background.data[bottomRight + channel], mixX),
+              mix(
+                background.data[bottomLeft + channel],
+                background.data[bottomRight + channel],
+                mixX,
+              ),
               mixY,
             )
           const localRed = sampleChannel(0)
@@ -938,7 +1003,9 @@ function applyGlareReduction(cv: CV, source: Mat) {
           const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
           const excess = light - localLight
           const strength =
-            smoothstep(198, 244, light) * smoothstep(4, 38, excess) * (1 - smoothstep(28, 82, saturation))
+            smoothstep(198, 244, light) *
+            smoothstep(4, 38, excess) *
+            (1 - smoothstep(28, 82, saturation))
           if (strength < 0.01) continue
           const targetLight = localLight + Math.min(7, Math.max(0, excess) * 0.12)
           const reconstructedRed = targetLight + (localRed - localLight) * 1.18
@@ -1020,7 +1087,12 @@ function estimatePaperWhitePoint(data: Uint8Array) {
   return result
 }
 
-function balancedLumaHistogram(data: Uint8Array, redScale: number, greenScale: number, blueScale: number) {
+function balancedLumaHistogram(
+  data: Uint8Array,
+  redScale: number,
+  greenScale: number,
+  blueScale: number,
+) {
   const histogram = new Uint32Array(256)
   let count = 0
   for (let index = 0; index < data.length; index += 4) {
@@ -1064,7 +1136,11 @@ function estimatePaperIllumination(cv: CV, source: Mat) {
     const combined = closes[0].clone()
     for (let index = 0; index < combined.data.length; index += 1) {
       // The large scale bridges broad cast shadows; the smaller scales reduce edge halos.
-      combined.data[index] = Math.max(closes[0].data[index] * 0.94, closes[1].data[index] * 0.98, closes[2].data[index])
+      combined.data[index] = Math.max(
+        closes[0].data[index] * 0.94,
+        closes[1].data[index] * 0.98,
+        closes[2].data[index],
+      )
     }
     const blurSize = scaledOdd(shortSide / 22, 9, 41)
     cv.GaussianBlur(combined, smooth, new cv.Size(blurSize, blurSize), 0)
@@ -1093,7 +1169,11 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number
     if (variation < 4) return
     const normalizedStrength = clamp(shadowStrength, 0, 100) / 100
     const blend = clamp(0.3 + Math.sqrt(normalizedStrength) * 0.77, 0, 1)
-    const target = Math.max(paper, percentile(gray.data, 0.9), variation > 22 && paper < 184 ? 184 : paper)
+    const target = Math.max(
+      paper,
+      percentile(gray.data, 0.9),
+      variation > 22 && paper < 184 ? 184 : paper,
+    )
     const pixels = source.data
     for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
       const background = Math.max(36, illumination.data[pixel])
@@ -1184,7 +1264,11 @@ function applyDocumentColorEnhancement(
     const paperMask = smoothstep(0.76, 0.98, normalized) * (1 - smoothstep(20, 74, saturation))
     const enhancedLight = 8 + 240 * normalized ** 0.8
     const preservedPaperLight = mix(enhancedLight, light, paperMask)
-    const defaultPaperLight = mix(enhancedLight, 248, paperMask * (DEFAULT_WHITENING_STRENGTH / 100))
+    const defaultPaperLight = mix(
+      enhancedLight,
+      248,
+      paperMask * (DEFAULT_WHITENING_STRENGTH / 100),
+    )
     let targetLight = mix(preservedPaperLight, defaultPaperLight, whiteningAmount)
     targetLight = mix(targetLight, 250, paperMask * extraWhitening)
     const chromaScale = mix(1.17, 0.08, paperMask * neutralizationAmount)
@@ -1233,7 +1317,15 @@ function applyBlackWhiteDocument(cv: CV, output: Mat, flattenPaper: boolean) {
       normalized.data[index] = clamp(5 + 248 * value ** 0.88, 0, 255)
     }
     const blockSize = scaledOdd(Math.min(output.cols, output.rows) / 14, 41, 121)
-    cv.adaptiveThreshold(normalized, adaptive, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, 12)
+    cv.adaptiveThreshold(
+      normalized,
+      adaptive,
+      255,
+      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+      cv.THRESH_BINARY,
+      blockSize,
+      12,
+    )
     // Adaptive thresholding alone treats a large uniform red stamp as paper.
     // Combine it with the normalized global tone so coloured document content
     // remains visible while faint background texture stays white.
@@ -1280,7 +1372,11 @@ function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
       if (edgeMask < 0.01) continue
       for (let channel = 0; channel < 3; channel += 1) {
         const detail = clamp(pixels[index + channel] - blurred[index + channel], -16, 16)
-        pixels[index + channel] = clamp(pixels[index + channel] + detail * amount * edgeMask, 0, 255)
+        pixels[index + channel] = clamp(
+          pixels[index + channel] + detail * amount * edgeMask,
+          0,
+          255,
+        )
       }
     }
   } finally {
@@ -1288,7 +1384,12 @@ function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
   }
 }
 
-function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjustments: EnhancementSettings) {
+function processEffects(
+  cv: CV,
+  source: Mat,
+  effects: EnhancementEffects,
+  adjustments: EnhancementSettings,
+) {
   const output = source.clone()
   try {
     const glareHandledBeforeBalance = effects.shadow === 'balance' && effects.glare === 'deglare'
@@ -1306,7 +1407,13 @@ function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjust
       applyGlareReduction(cv, output)
     }
     applyToneAdjustments(output, adjustments)
-    applyColorEffect(cv, output, effects.color, effects.shadow === 'none', adjustments.whiteningStrength)
+    applyColorEffect(
+      cv,
+      output,
+      effects.color,
+      effects.shadow === 'none',
+      adjustments.whiteningStrength,
+    )
     if (effects.detail === 'sharpen') {
       applyDetailEnhancement(cv, output, adjustments.sharpness)
     }
@@ -1317,7 +1424,13 @@ function processEffects(cv: CV, source: Mat, effects: EnhancementEffects, adjust
   }
 }
 
-async function renderPage(id: string, page: ScanPage, maxEdge: number, mimeType: string, quality = 0.92) {
+async function renderPage(
+  id: string,
+  page: ScanPage,
+  maxEdge: number,
+  mimeType: string,
+  quality = 0.92,
+) {
   post({ id, type: 'progress', progress: 10, label: '正在读取原图' })
   await ensureOpenCv(id)
   const cv = cvRuntime
@@ -1407,8 +1520,14 @@ workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerReques
     request.type === 'init'
       ? initialize(request.id)
       : request.type === 'detect'
-      ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
-      : renderPage(request.id, request.page, request.options.maxEdge, request.options.mimeType, request.options.quality)
+        ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
+        : renderPage(
+            request.id,
+            request.page,
+            request.options.maxEdge,
+            request.options.mimeType,
+            request.options.quality,
+          )
 
   void task.catch((error: unknown) => {
     const message = error instanceof Error ? error.message : '本地图像处理失败'

@@ -35,11 +35,11 @@
 
 ### 三种扫描模式
 
-| 模式 | 主要能力 | 典型输出 |
-| --- | --- | --- |
+| 模式   | 主要能力                                             | 典型输出                                    |
+| ------ | ---------------------------------------------------- | ------------------------------------------- |
 | 身份证 | 引导拍摄人像面与国徽面，按标准卡片比例识别和透视校正 | 正反面大图排版到一张 A4；支持 JPG、PNG、PDF |
-| 护照 | 支持资料页单页和展开双页，并使用对应比例辅助边缘识别 | JPG、PNG、PDF；多页时可导出 PDF 或 ZIP |
-| 文档 | 批量导入、连续添加、页面排序和多页管理 | 单页 JPG/PNG、多页 PDF、JPG 图片包 ZIP |
+| 护照   | 支持资料页单页和展开双页，并使用对应比例辅助边缘识别 | JPG、PNG、PDF；多页时可导出 PDF 或 ZIP      |
+| 文档   | 批量导入、连续添加、页面排序和多页管理               | 单页 JPG/PNG、多页 PDF、JPG 图片包 ZIP      |
 
 > 身份证 A4 输出以清晰查看为目标，会放大正反两面，并不是 1:1 实体尺寸复印件。
 
@@ -69,12 +69,12 @@
 - 导出过程同样在本地完成，不调用服务端转换接口。
 - 导出的 JPG/PNG 会重新编码，不携带原照片的 EXIF 或定位信息。
 
-| 格式 | 使用场景 | 说明 |
-| --- | --- | --- |
-| PDF | 证件归档或多页文档 | 文档可选择适应内容或统一 A4；身份证固定为 A4 单页大图排版 |
-| JPG | 单页图片或身份证正反面合图 | 兼容性好，使用有损压缩 |
-| PNG | 单页图片或身份证正反面合图 | 无损，但文件通常更大 |
-| ZIP | 多页护照或文档 | 每页渲染为独立 JPG 后打包 |
+| 格式 | 使用场景                   | 说明                                                      |
+| ---- | -------------------------- | --------------------------------------------------------- |
+| PDF  | 证件归档或多页文档         | 文档可选择适应内容或统一 A4；身份证固定为 A4 单页大图排版 |
+| JPG  | 单页图片或身份证正反面合图 | 兼容性好，使用有损压缩                                    |
+| PNG  | 单页图片或身份证正反面合图 | 无损，但文件通常更大                                      |
+| ZIP  | 多页护照或文档             | 每页渲染为独立 JPG 后打包                                 |
 
 ## 使用流程
 
@@ -110,16 +110,16 @@ flowchart LR
 
 ## 技术栈
 
-| 模块 | 技术 |
-| --- | --- |
-| 界面 | React 19、TypeScript、Tailwind CSS 4、Radix UI、Lucide |
-| 构建 | Vite 8 |
-| 图像处理 | OpenCV.js、Web Worker、OffscreenCanvas |
-| 本地存储 | Dexie、IndexedDB |
-| 文件导出 | pdf-lib、JSZip、Canvas 编码 |
-| PWA | vite-plugin-pwa、Workbox |
-| 状态与路由 | Zustand、React Router |
-| 质量保障 | Vitest、Testing Library、Playwright、Oxlint、TypeScript |
+| 模块       | 技术                                                    |
+| ---------- | ------------------------------------------------------- |
+| 界面       | React 19、TypeScript、Tailwind CSS 4、Radix UI、Lucide  |
+| 构建       | Vite 8                                                  |
+| 图像处理   | OpenCV.js、Web Worker、OffscreenCanvas                  |
+| 本地存储   | Dexie、IndexedDB                                        |
+| 文件导出   | pdf-lib、JSZip、Canvas 编码                             |
+| PWA        | vite-plugin-pwa、Workbox                                |
+| 状态与路由 | Zustand、React Router                                   |
+| 质量保障   | Vitest、Testing Library、Playwright、Oxlint、TypeScript |
 
 ## 本地开发
 

@@ -72,7 +72,10 @@ describe('FilterPanel', () => {
     fireEvent.click(smart)
     expect(smart).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '亮度均衡' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '标准去阴影' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: '标准去阴影' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
     expect(screen.getByRole('button', { name: '去反光' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '彩色增强' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '加锐' })).toHaveAttribute('aria-pressed', 'true')
@@ -120,7 +123,9 @@ describe('FilterPanel', () => {
     )
     const counterclockwise = screen.getByRole('button', { name: '逆时针旋转 90°' })
     const clockwise = screen.getByRole('button', { name: '顺时针旋转 90°' })
-    expect(counterclockwise.compareDocumentPosition(clockwise) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      counterclockwise.compareDocumentPosition(clockwise) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
 
     fireEvent.click(counterclockwise)
     fireEvent.click(clockwise)
@@ -141,7 +146,9 @@ describe('FilterPanel', () => {
       />,
     )
     const slider = screen.getByRole('slider', { name: '亮度' })
-    const control = slider.closest('label')?.querySelector<HTMLElement>('[data-orientation="horizontal"]')
+    const control = slider
+      .closest('label')
+      ?.querySelector<HTMLElement>('[data-orientation="horizontal"]')
     expect(control).toBeTruthy()
     Object.defineProperties(slider, {
       setPointerCapture: { configurable: true, value: vi.fn() },

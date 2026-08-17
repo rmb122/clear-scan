@@ -38,14 +38,17 @@ export function PageRail({
       className="hide-scrollbar flex gap-2 overflow-x-auto p-3 lg:h-full lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:p-3"
     >
       {sorted.map((page, index) => {
-        const label = mode === 'id-card' ? (page.role === 'front' ? '人像面' : '国徽面') : `第 ${index + 1} 页`
+        const label =
+          mode === 'id-card' ? (page.role === 'front' ? '人像面' : '国徽面') : `第 ${index + 1} 页`
         const active = page.id === activeId
         return (
           <div
             key={page.id}
             className={cn(
               'group relative shrink-0 rounded-xl border bg-background p-1 transition lg:w-full',
-              active ? 'border-primary ring-2 ring-primary/15' : 'border-border hover:border-primary/30',
+              active
+                ? 'border-primary ring-2 ring-primary/15'
+                : 'border-border hover:border-primary/30',
             )}
           >
             <button

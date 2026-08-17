@@ -94,7 +94,8 @@ export class ScannerClient {
 
   private getWorker() {
     if (this.worker) return this.worker
-    const openCvUrl = new URL(`${import.meta.env.BASE_URL}vendor/opencv.js`, window.location.origin).href
+    const openCvUrl = new URL(`${import.meta.env.BASE_URL}vendor/opencv.js`, window.location.origin)
+      .href
     const moduleUrl = new URL(scannerWorkerUrl, window.location.origin).href
     const bootstrap = `
       const queuedMessages=[];
@@ -160,14 +161,16 @@ export class ScannerClient {
   private resolveConsumer(request: QueuedRequest, response: ScannerWorkerResponse) {
     if (request.consumerSettled) return
     request.consumerSettled = true
-    if (request.signal && request.abortHandler) request.signal.removeEventListener('abort', request.abortHandler)
+    if (request.signal && request.abortHandler)
+      request.signal.removeEventListener('abort', request.abortHandler)
     request.resolve(response)
   }
 
   private rejectConsumer(request: QueuedRequest, error: Error) {
     if (request.consumerSettled) return
     request.consumerSettled = true
-    if (request.signal && request.abortHandler) request.signal.removeEventListener('abort', request.abortHandler)
+    if (request.signal && request.abortHandler)
+      request.signal.removeEventListener('abort', request.abortHandler)
     request.reject(error)
   }
 
@@ -221,13 +224,19 @@ export class ScannerClient {
     try {
       this.getWorker().postMessage(request.message)
     } catch (error) {
-      this.handleWorkerFailure(error instanceof Error ? error : new Error('图像处理 Worker 无法启动'))
+      this.handleWorkerFailure(
+        error instanceof Error ? error : new Error('图像处理 Worker 无法启动'),
+      )
     }
   }
 
   private request(
     message: ScannerWorkerRequest,
-    { intent, timeoutMs = 90_000, signal }: { intent: RequestIntent; timeoutMs?: number; signal?: AbortSignal },
+    {
+      intent,
+      timeoutMs = 90_000,
+      signal,
+    }: { intent: RequestIntent; timeoutMs?: number; signal?: AbortSignal },
   ) {
     return new Promise<ScannerWorkerResponse>((resolve, reject) => {
       if (signal?.aborted) {
@@ -257,7 +266,9 @@ export class ScannerClient {
 
   private get renderCacheLimit() {
     const memory =
-      typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+      typeof navigator === 'undefined'
+        ? undefined
+        : (navigator as Navigator & { deviceMemory?: number }).deviceMemory
     return (memory && memory >= 8 ? 96 : 32) * MEBIBYTE
   }
 
@@ -280,7 +291,8 @@ export class ScannerClient {
       this.renderCache.delete(key)
     }
     while (this.renderCacheBytes + size > limit) {
-      const oldest = this.renderCache.entries().next().value as [string, RenderCacheEntry] | undefined
+      const oldest = this.renderCache.entries().next().value as
+        [string, RenderCacheEntry] | undefined
       if (!oldest) break
       this.renderCache.delete(oldest[0])
       this.renderCacheBytes -= oldest[1].blob.size
@@ -329,7 +341,11 @@ export class ScannerClient {
     return response.result as DetectionResult
   }
 
-  async render(page: ScanPage, options: RenderOptions, requestOptions: ScannerRenderRequestOptions = {}) {
+  async render(
+    page: ScanPage,
+    options: RenderOptions,
+    requestOptions: ScannerRenderRequestOptions = {},
+  ) {
     const intent = requestOptions.intent ?? 'preview'
     const cacheKey = intent === 'export' ? createRenderCacheKey(page, options) : undefined
     if (cacheKey) {

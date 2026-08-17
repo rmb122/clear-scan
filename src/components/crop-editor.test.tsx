@@ -62,7 +62,11 @@ describe('CropEditor', () => {
     const handle = screen.getByRole('button', { name: '拖动第 1 个裁剪点' })
     Object.defineProperty(handle, 'setPointerCapture', { configurable: true, value: vi.fn() })
 
-    fireEvent.pointerDown(handle, { pointerId: 7, clientX: 40 - handleOffset, clientY: 20 - handleOffset })
+    fireEvent.pointerDown(handle, {
+      pointerId: 7,
+      clientX: 40 - handleOffset,
+      clientY: 20 - handleOffset,
+    })
     expect(screen.getByTestId('crop-magnifier')).toBeInTheDocument()
     fireEvent.pointerMove(handle, { pointerId: 7, clientX: 300, clientY: 200 })
     expect(onChange).not.toHaveBeenCalled()
@@ -86,7 +90,11 @@ describe('CropEditor', () => {
     const handle = screen.getByRole('button', { name: '拖动第 4 个裁剪点' })
     Object.defineProperty(handle, 'setPointerCapture', { configurable: true, value: vi.fn() })
 
-    fireEvent.pointerDown(handle, { pointerId: 3, clientX: 40 - handleOffset, clientY: 480 + handleOffset })
+    fireEvent.pointerDown(handle, {
+      pointerId: 3,
+      clientX: 40 - handleOffset,
+      clientY: 480 + handleOffset,
+    })
     fireEvent.pointerMove(handle, { pointerId: 3, clientX: -100, clientY: 900 })
     fireEvent.pointerCancel(handle, { pointerId: 3 })
 
@@ -111,7 +119,10 @@ describe('CropEditor', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: '拖动第 1 个裁剪点' })).toHaveStyle({ left: '20%', top: '25%' })
+    expect(screen.getByRole('button', { name: '拖动第 1 个裁剪点' })).toHaveStyle({
+      left: '20%',
+      top: '25%',
+    })
   })
 
   it('keeps each drag handle away from the real crop corner', () => {

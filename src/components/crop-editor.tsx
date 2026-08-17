@@ -210,7 +210,12 @@ export function CropEditor({
           height: width < height ? 'min(100%, 760px)' : 'auto',
         }}
       >
-        <img src={sourceUrl} alt="待裁剪文档" className="pointer-events-none size-full object-fill" draggable={false} />
+        <img
+          src={sourceUrl}
+          alt="待裁剪文档"
+          className="pointer-events-none size-full object-fill"
+          draggable={false}
+        />
         <svg
           className="pointer-events-none absolute inset-0 size-full"
           viewBox="0 0 100 100"

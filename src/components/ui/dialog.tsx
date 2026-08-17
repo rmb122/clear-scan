@@ -6,7 +6,11 @@ import { cn } from '@/lib/utils'
 export const Dialog = DialogPrimitive.Root
 export const DialogTrigger = DialogPrimitive.Trigger
 
-export function DialogContent({ className, children, ...props }: ComponentProps<typeof DialogPrimitive.Content>) {
+export function DialogContent({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#081711]/65 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in" />
@@ -32,9 +36,22 @@ export function DialogHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 export function DialogTitle({ className, ...props }: ComponentProps<typeof DialogPrimitive.Title>) {
-  return <DialogPrimitive.Title className={cn('text-xl font-semibold tracking-tight', className)} {...props} />
+  return (
+    <DialogPrimitive.Title
+      className={cn('text-xl font-semibold tracking-tight', className)}
+      {...props}
+    />
+  )
 }
 
-export function DialogDescription({ className, ...props }: ComponentProps<typeof DialogPrimitive.Description>) {
-  return <DialogPrimitive.Description className={cn('text-sm leading-6 text-muted-foreground', className)} {...props} />
+export function DialogDescription({
+  className,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      className={cn('text-sm leading-6 text-muted-foreground', className)}
+      {...props}
+    />
+  )
 }

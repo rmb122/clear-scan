@@ -4,12 +4,7 @@ import type { NormalizedQuad, Point } from './types'
 export const DETECTION_CONFIDENCE_THRESHOLD = 0.62
 
 export type DetectionCandidateSource =
-  | 'canny'
-  | 'normalized-canny'
-  | 'adaptive-light'
-  | 'adaptive-dark'
-  | 'hough'
-  | 'min-area-rect'
+  'canny' | 'normalized-canny' | 'adaptive-light' | 'adaptive-dark' | 'hough' | 'min-area-rect'
 
 export interface DetectionCandidate {
   corners: NormalizedQuad
@@ -71,7 +66,10 @@ function cornerAngles(points: NormalizedQuad) {
     const next = points[(index + 1) % 4]
     const first = { x: previous.x - point.x, y: previous.y - point.y }
     const second = { x: next.x - point.x, y: next.y - point.y }
-    const denominator = Math.max(0.001, Math.hypot(first.x, first.y) * Math.hypot(second.x, second.y))
+    const denominator = Math.max(
+      0.001,
+      Math.hypot(first.x, first.y) * Math.hypot(second.x, second.y),
+    )
     return Math.acos(clamp((first.x * second.x + first.y * second.y) / denominator, -1, 1))
   })
 }
@@ -91,13 +89,23 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
     angles.some((angle) => angle < Math.PI / 9 || angle > (Math.PI * 8) / 9)
 
   const angleScore =
-    angles.reduce((sum, angle) => sum + Math.exp(-Math.abs(angle - Math.PI / 2) / (Math.PI / 3)), 0) / 4
+    angles.reduce(
+      (sum, angle) => sum + Math.exp(-Math.abs(angle - Math.PI / 2) / (Math.PI / 3)),
+      0,
+    ) / 4
   const oppositeScore =
     (Math.exp(
-      -lineAngleDifference(directionAngle(pixels[0], pixels[1]), directionAngle(pixels[3], pixels[2])) / (Math.PI / 6),
+      -lineAngleDifference(
+        directionAngle(pixels[0], pixels[1]),
+        directionAngle(pixels[3], pixels[2]),
+      ) /
+        (Math.PI / 6),
     ) +
       Math.exp(
-        -lineAngleDifference(directionAngle(pixels[0], pixels[3]), directionAngle(pixels[1], pixels[2])) /
+        -lineAngleDifference(
+          directionAngle(pixels[0], pixels[3]),
+          directionAngle(pixels[1], pixels[2]),
+        ) /
           (Math.PI / 6),
       )) /
     2
@@ -108,9 +116,17 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
   const ratioScore = input.targetRatio
     ? Math.exp(-Math.abs(Math.log(orientationFreeRatio / input.targetRatio)) * 1.8)
     : 1
-  const center = corners.reduce((sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }), { x: 0, y: 0 })
+  const center = corners.reduce(
+    (sum, point) => ({ x: sum.x + point.x / 4, y: sum.y + point.y / 4 }),
+    { x: 0, y: 0 },
+  )
   const centerScore = 1 - clamp(Math.hypot(center.x - 0.5, center.y - 0.5) / 0.72)
-  const areaScore = area < 0.36 ? clamp((area - 0.04) / 0.32) : area <= 0.9 ? 1 : 1 - clamp((area - 0.9) / 0.085) * 0.42
+  const areaScore =
+    area < 0.36
+      ? clamp((area - 0.04) / 0.32)
+      : area <= 0.9
+        ? 1
+        : 1 - clamp((area - 0.9) / 0.085) * 0.42
   const borderCorners = corners.filter(
     (point) => point.x < 0.015 || point.x > 0.985 || point.y < 0.015 || point.y > 0.985,
   ).length
@@ -164,10 +180,16 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
   }
 }
 
-function meanCornerDistance(left: NormalizedQuad, right: NormalizedQuad, width: number, height: number) {
+function meanCornerDistance(
+  left: NormalizedQuad,
+  right: NormalizedQuad,
+  width: number,
+  height: number,
+) {
   return (
     left.reduce(
-      (sum, point, index) => sum + Math.hypot((point.x - right[index].x) * width, (point.y - right[index].y) * height),
+      (sum, point, index) =>
+        sum + Math.hypot((point.x - right[index].x) * width, (point.y - right[index].y) * height),
       0,
     ) /
     4 /
@@ -183,7 +205,11 @@ export function deduplicateCandidates(
 ) {
   const unique: DetectionCandidate[] = []
   for (const candidate of [...candidates].sort((left, right) => right.score - left.score)) {
-    if (!unique.some((item) => meanCornerDistance(item.corners, candidate.corners, width, height) < threshold)) {
+    if (
+      !unique.some(
+        (item) => meanCornerDistance(item.corners, candidate.corners, width, height) < threshold,
+      )
+    ) {
       unique.push(candidate)
     }
   }
@@ -204,7 +230,10 @@ function pointInsideQuad(point: Point, quad: NormalizedQuad, tolerance = 0.0025)
 }
 
 function quadCenter(quad: NormalizedQuad) {
-  return quad.reduce((center, point) => ({ x: center.x + point.x / 4, y: center.y + point.y / 4 }), { x: 0, y: 0 })
+  return quad.reduce(
+    (center, point) => ({ x: center.x + point.x / 4, y: center.y + point.y / 4 }),
+    { x: 0, y: 0 },
+  )
 }
 
 export function suppressNestedCandidates(candidates: DetectionCandidate[]) {
@@ -216,9 +245,11 @@ export function suppressNestedCandidates(candidates: DetectionCandidate[]) {
       if (areaRatio < 1.18 || areaRatio > 1.9) return false
       if (outer.score < candidate.score - 0.14) return false
       if (outer.edgeSupport < candidate.edgeSupport - 0.18) return false
-      if (outer.ratioScore < 0.72 || outer.angleScore < 0.78 || outer.oppositeScore < 0.72) return false
+      if (outer.ratioScore < 0.72 || outer.angleScore < 0.78 || outer.oppositeScore < 0.72)
+        return false
       const outerCenter = quadCenter(outer.corners)
-      if (Math.hypot(candidateCenter.x - outerCenter.x, candidateCenter.y - outerCenter.y) > 0.11) return false
+      if (Math.hypot(candidateCenter.x - outerCenter.x, candidateCenter.y - outerCenter.y) > 0.11)
+        return false
       return candidate.corners.every((point) => pointInsideQuad(point, outer.corners))
     })
     if (!enclosing) return candidate
@@ -233,7 +264,10 @@ export function suppressNestedCandidates(candidates: DetectionCandidate[]) {
   return adjusted.sort((left, right) => right.score - left.score)
 }
 
-export function calibrateDetectionConfidence(best?: DetectionCandidate, second?: DetectionCandidate) {
+export function calibrateDetectionConfidence(
+  best?: DetectionCandidate,
+  second?: DetectionCandidate,
+) {
   if (!best) return 0
   const absolute = clamp((best.score - 0.44) / 0.42)
   const separation = second ? clamp((best.score - second.score) / 0.12) : 1

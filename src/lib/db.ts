@@ -102,7 +102,10 @@ export async function getProjectPages(projectId: string) {
 }
 
 export async function getProjectWithPages(projectId: string) {
-  const [project, pages] = await Promise.all([db.projects.get(projectId), getProjectPages(projectId)])
+  const [project, pages] = await Promise.all([
+    db.projects.get(projectId),
+    getProjectPages(projectId),
+  ])
   return { project, pages }
 }
 

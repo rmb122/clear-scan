@@ -85,7 +85,14 @@ describe('document detection scoring', () => {
   })
 
   it('deduplicates overlapping candidates before confidence calibration', () => {
-    const best = scoreDetectionCandidate({ corners: centered, source: 'canny', width: 1200, height: 900, edgeSupport: 1, contrast: 1 })
+    const best = scoreDetectionCandidate({
+      corners: centered,
+      source: 'canny',
+      width: 1200,
+      height: 900,
+      edgeSupport: 1,
+      contrast: 1,
+    })
     const duplicate = { ...best, source: 'normalized-canny' as const, score: best.score - 0.01 }
     const unique = deduplicateCandidates([best, duplicate], 1200, 900)
     expect(unique).toHaveLength(1)
@@ -156,6 +163,9 @@ describe('document detection scoring', () => {
   })
 
   it('intersects two side equations', () => {
-    expect(lineIntersection({ a: 1, b: 0, c: -10 }, { a: 0, b: 1, c: -20 })).toEqual({ x: 10, y: 20 })
+    expect(lineIntersection({ a: 1, b: 0, c: -10 }, { a: 0, b: 1, c: -20 })).toEqual({
+      x: 10,
+      y: 20,
+    })
   })
 })

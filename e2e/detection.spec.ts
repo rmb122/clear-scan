@@ -182,8 +182,10 @@ test('detects difficult document edges and rejects scenes without a document', a
       expect(detection.cornerSource).toBe('detected')
       const errors = detection.corners.map(
         (corner, index) =>
-          Math.hypot(corner.x * 1200 - scenario.expected![index][0], corner.y * 900 - scenario.expected![index][1]) /
-          1500,
+          Math.hypot(
+            corner.x * 1200 - scenario.expected![index][0],
+            corner.y * 900 - scenario.expected![index][1],
+          ) / 1500,
       )
       const meanError = errors.reduce((sum, error) => sum + error, 0) / errors.length
       expect(meanError).toBeLessThanOrEqual(scenario.meanLimit!)
@@ -192,8 +194,13 @@ test('detects difficult document edges and rejects scenes without a document', a
   }
 })
 
-test('keeps the image worker stable across ten consecutive detections', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'One browser run is enough for the worker lifecycle check')
+test('keeps the image worker stable across ten consecutive detections', async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== 'desktop-chromium',
+    'One browser run is enough for the worker lifecycle check',
+  )
   test.setTimeout(180_000)
   await page.goto('/#/scan/document')
   const buffer = await rasterizeSvg(page, 'low-contrast.svg')

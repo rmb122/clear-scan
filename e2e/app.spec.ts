@@ -24,7 +24,10 @@ test('local OpenCV asset initializes inside a classic worker', async ({ page }) 
     `
         const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
         const worker = new Worker(url)
-        const timer = window.setTimeout(() => reject(new Error('OpenCV worker initialization timed out')), 30_000)
+        const timer = window.setTimeout(
+          () => reject(new Error('OpenCV worker initialization timed out')),
+          30_000,
+        )
         let loaded: Record<string, unknown> = {}
         worker.onmessage = (event) => {
           if (event.data.phase === 'loaded') loaded = event.data
@@ -73,16 +76,25 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
       hasPrematureThumbnail: Boolean(record?.thumbnail),
       hasArrayBuffer: Boolean(
         source &&
-          typeof source === 'object' &&
-          'data' in source &&
-          (source as { data: unknown }).data instanceof ArrayBuffer,
+        typeof source === 'object' &&
+        'data' in source &&
+        (source as { data: unknown }).data instanceof ArrayBuffer,
       ),
     }
   })
-  expect(storageShape).toEqual({ isBlob: false, hasPrematureThumbnail: false, hasArrayBuffer: true })
+  expect(storageShape).toEqual({
+    isBlob: false,
+    hasPrematureThumbnail: false,
+    hasArrayBuffer: true,
+  })
   const pageThumbnail = page.getByRole('button', { name: '打开第 1 页' }).locator('img')
   await expect
-    .poll(() => pageThumbnail.evaluate((image: HTMLImageElement) => [image.naturalWidth, image.naturalHeight]))
+    .poll(() =>
+      pageThumbnail.evaluate((image: HTMLImageElement) => [
+        image.naturalWidth,
+        image.naturalHeight,
+      ]),
+    )
     .toEqual([1200, 900])
   await page.getByRole('button', { name: '确认裁剪' }).click()
   await expect(page.getByRole('button', { name: '导出' })).toBeEnabled()
@@ -99,10 +111,18 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
   expect(workspaceBox).not.toBeNull()
   expect(loadingContentBox).not.toBeNull()
   expect(
-    Math.abs(loadingContentBox!.x + loadingContentBox!.width / 2 - (workspaceBox!.x + workspaceBox!.width / 2)),
+    Math.abs(
+      loadingContentBox!.x +
+        loadingContentBox!.width / 2 -
+        (workspaceBox!.x + workspaceBox!.width / 2),
+    ),
   ).toBeLessThanOrEqual(1)
   expect(
-    Math.abs(loadingContentBox!.y + loadingContentBox!.height / 2 - (workspaceBox!.y + workspaceBox!.height / 2)),
+    Math.abs(
+      loadingContentBox!.y +
+        loadingContentBox!.height / 2 -
+        (workspaceBox!.y + workspaceBox!.height / 2),
+    ),
   ).toBeLessThanOrEqual(1)
   await expect(page.getByRole('img', { name: '扫描增强预览' })).toBeVisible({
     timeout: 120_000,
@@ -160,7 +180,10 @@ test('uploads a document and reaches the crop editor', async ({ page }) => {
 test('scan history can clear all local projects', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'One storage cleanup run is enough')
   await page.goto('/#/scan/document')
-  await page.locator('input[type="file"]').nth(1).setInputFiles(path.resolve('e2e/fixtures/document.png'))
+  await page
+    .locator('input[type="file"]')
+    .nth(1)
+    .setInputFiles(path.resolve('e2e/fixtures/document.png'))
   await expect(page.getByText('确认四个角点')).toBeVisible({
     timeout: 120_000,
   })
