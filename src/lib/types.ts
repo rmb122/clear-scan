@@ -97,6 +97,10 @@ export type ScannerWorkerRequest =
       type: 'init'
     })
   | (WorkerRequestBase & {
+      type: 'invalidate-cache'
+      pageId: string
+    })
+  | (WorkerRequestBase & {
       type: 'detect'
       source: Blob
       mode: ScanMode
@@ -106,6 +110,7 @@ export type ScannerWorkerRequest =
       type: 'render'
       page: ScanPage
       options: RenderOptions
+      cacheIntermediate: boolean
     })
 
 export type ScannerWorkerResponse =

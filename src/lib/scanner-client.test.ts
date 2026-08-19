@@ -129,6 +129,7 @@ describe('scanner request scheduling', () => {
     expect(worker.messages).toHaveLength(2)
     expect(worker.messages[1]).toMatchObject({
       type: 'render',
+      cacheIntermediate: true,
       page: { adjustments: { brightness: 2 } },
     })
 
@@ -167,7 +168,21 @@ describe('scanner request scheduling', () => {
     const cached = await client.render(page, options, { intent: 'export' })
 
     expect(worker.messages).toHaveLength(2)
+    expect(worker.messages[1]).toMatchObject({ type: 'render', cacheIntermediate: false })
     expect(cached).toEqual(rendered)
+
+    client.invalidatePage(page.id)
+    expect(worker.messages[2]).toMatchObject({ type: 'invalidate-cache', pageId: page.id })
+    const rerendered = client.render(page, options, { intent: 'export' })
+    expect(worker.messages[3]).toMatchObject({ type: 'render', cacheIntermediate: false })
+    worker.respond({
+      id: worker.messages[3].id,
+      type: 'rendered',
+      blob: new Blob(['rerendered-export']),
+      width: 3000,
+      height: 2250,
+    })
+    expect((await rerendered).blob).not.toBe(rendered.blob)
   })
 })
 

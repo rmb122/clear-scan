@@ -60,140 +60,124 @@ interface HighlightAnalysis {
 
 function recoverableHighlightMask(cv: CV, source: Mat): HighlightAnalysis {
   const analysis = new cv.Mat()
+  const candidate = new cv.Mat()
+  const labels = new cv.Mat()
+  const stats = new cv.Mat()
+  const centroids = new cv.Mat()
   try {
     const scale = Math.min(1, 640 / Math.max(source.cols, source.rows))
     const width = Math.max(1, Math.round(source.cols * scale))
     const height = Math.max(1, Math.round(source.rows * scale))
     cv.resize(source, analysis, new cv.Size(width, height), 0, 0, cv.INTER_AREA)
-    const candidate = new Uint8Array(width * height)
-    for (let pixel = 0, index = 0; pixel < candidate.length; pixel += 1, index += 4) {
-      const red = analysis.data[index]
-      const green = analysis.data[index + 1]
-      const blue = analysis.data[index + 2]
+    candidate.create(height, width, cv.CV_8UC1)
+    let analysisData = analysis.data
+    const candidateData = candidate.data
+    for (let pixel = 0, index = 0; pixel < candidateData.length; pixel += 1, index += 4) {
+      const red = analysisData[index]
+      const green = analysisData[index + 1]
+      const blue = analysisData[index + 2]
       const light = pixelLuma(red, green, blue)
       const saturation = Math.max(red, green, blue) - Math.min(red, green, blue)
-      candidate[pixel] = light >= 194 && saturation <= 86 ? 1 : 0
+      candidateData[pixel] = light >= 194 && saturation <= 86 ? 1 : 0
     }
+
+    const labelCount = cv.connectedComponentsWithStats(
+      candidate,
+      labels,
+      stats,
+      centroids,
+      8,
+      cv.CV_32S,
+    )
+    const labelData = labels.data32S
+    const statsData = stats.data32S
+    // OpenCV may grow the WASM heap while labeling. Refresh the view before
+    // reading the analysis pixels again.
+    analysisData = analysis.data
+
     // A bright page is normally connected to the crop boundary. Excluding that
     // component prevents paper margins from being pulled toward nearby ink.
-    const exterior = new Uint8Array(candidate.length)
-    const queue = new Int32Array(candidate.length)
-    let head = 0
-    let tail = 0
-    const enqueue = (pixel: number) => {
-      if (!candidate[pixel] || exterior[pixel]) return
-      exterior[pixel] = 1
-      queue[tail] = pixel
-      tail += 1
-    }
+    const exterior = new Uint8Array(labelCount)
     for (let x = 0; x < width; x += 1) {
-      enqueue(x)
-      enqueue((height - 1) * width + x)
+      exterior[labelData[x]] = 1
+      exterior[labelData[(height - 1) * width + x]] = 1
     }
     for (let y = 1; y < height - 1; y += 1) {
-      enqueue(y * width)
-      enqueue(y * width + width - 1)
-    }
-    while (head < tail) {
-      const pixel = queue[head]
-      head += 1
-      const x = pixel % width
-      if (x > 0) enqueue(pixel - 1)
-      if (x + 1 < width) enqueue(pixel + 1)
-      if (pixel >= width) enqueue(pixel - width)
-      if (pixel + width < candidate.length) enqueue(pixel + width)
-      if (x > 0 && pixel >= width) enqueue(pixel - width - 1)
-      if (x + 1 < width && pixel >= width) enqueue(pixel - width + 1)
-      if (x > 0 && pixel + width < candidate.length) enqueue(pixel + width - 1)
-      if (x + 1 < width && pixel + width < candidate.length) enqueue(pixel + width + 1)
+      const row = y * width
+      exterior[labelData[row]] = 1
+      exterior[labelData[row + width - 1]] = 1
     }
 
     // Only broad, graduated highlight blobs are recoverable glare. Connected
     // component geometry and tone spread protect legitimate white text, logos,
     // barcodes and solid design elements inside coloured regions.
-    const recoverable = new Uint8Array(candidate.length)
-    const regions: HighlightRegion[] = []
-    let recoverableCount = 0
-    const minimumArea = Math.max(32, Math.round(candidate.length * 0.00025))
-    const maximumArea = Math.round(candidate.length * 0.12)
+    const minimumArea = Math.max(32, Math.round(labelData.length * 0.00025))
+    const maximumArea = Math.round(labelData.length * 0.12)
     const minimumSpan = Math.max(6, Math.round(Math.min(width, height) * 0.018))
-    for (let start = 0; start < candidate.length; start += 1) {
-      if (!candidate[start] || exterior[start]) continue
-      head = 0
-      tail = 0
-      candidate[start] = 0
-      queue[tail] = start
-      tail += 1
-      let minX = width
-      let maxX = 0
-      let minY = height
-      let maxY = 0
-      let sum = 0
-      let sumSquares = 0
-      let minimumLight = 255
-      let maximumLight = 0
-      let shoulderPixels = 0
-
-      const enqueueComponent = (pixel: number) => {
-        if (!candidate[pixel] || exterior[pixel]) return
-        candidate[pixel] = 0
-        queue[tail] = pixel
-        tail += 1
-      }
-      while (head < tail) {
-        const pixel = queue[head]
-        head += 1
-        const x = pixel % width
-        const y = Math.floor(pixel / width)
-        const index = pixel * 4
-        const light = pixelLuma(
-          analysis.data[index],
-          analysis.data[index + 1],
-          analysis.data[index + 2],
-        )
-        minX = Math.min(minX, x)
-        maxX = Math.max(maxX, x)
-        minY = Math.min(minY, y)
-        maxY = Math.max(maxY, y)
-        sum += light
-        sumSquares += light * light
-        minimumLight = Math.min(minimumLight, light)
-        maximumLight = Math.max(maximumLight, light)
-        if (light >= 202 && light <= 240) shoulderPixels += 1
-
-        if (x > 0) enqueueComponent(pixel - 1)
-        if (x + 1 < width) enqueueComponent(pixel + 1)
-        if (pixel >= width) enqueueComponent(pixel - width)
-        if (pixel + width < candidate.length) enqueueComponent(pixel + width)
-        if (x > 0 && pixel >= width) enqueueComponent(pixel - width - 1)
-        if (x + 1 < width && pixel >= width) enqueueComponent(pixel - width + 1)
-        if (x > 0 && pixel + width < candidate.length) enqueueComponent(pixel + width - 1)
-        if (x + 1 < width && pixel + width < candidate.length) enqueueComponent(pixel + width + 1)
-      }
-
-      const area = tail
-      const boxWidth = maxX - minX + 1
-      const boxHeight = maxY - minY + 1
+    const eligible = new Uint8Array(labelCount)
+    for (let label = 1; label < labelCount; label += 1) {
+      if (exterior[label]) continue
+      const offset = label * 5
+      const boxWidth = statsData[offset + 2]
+      const boxHeight = statsData[offset + 3]
+      const area = statsData[offset + 4]
       const aspectRatio = Math.max(boxWidth / boxHeight, boxHeight / boxWidth)
       const fillRatio = area / (boxWidth * boxHeight)
-      const average = sum / area
-      const deviation = Math.sqrt(Math.max(0, sumSquares / area - average * average))
-      const isGraduatedBlob =
+      if (
         area >= minimumArea &&
         area <= maximumArea &&
         Math.min(boxWidth, boxHeight) >= minimumSpan &&
         aspectRatio <= 12 &&
-        fillRatio >= 0.2 &&
-        maximumLight >= 245 &&
-        maximumLight - minimumLight >= 28 &&
-        deviation >= 7 &&
-        shoulderPixels / area >= 0.18
-      if (!isGraduatedBlob) continue
-      regions.push({ minX, maxX, minY, maxY })
-      for (let index = 0; index < tail; index += 1) {
-        recoverable[queue[index]] = 1
-        recoverableCount += 1
+        fillRatio >= 0.2
+      ) {
+        eligible[label] = 1
       }
+    }
+
+    const sums = new Float64Array(labelCount)
+    const sumSquares = new Float64Array(labelCount)
+    const minimumLights = new Float64Array(labelCount)
+    minimumLights.fill(255)
+    const maximumLights = new Float64Array(labelCount)
+    const shoulderPixels = new Uint32Array(labelCount)
+    for (let pixel = 0, index = 0; pixel < labelData.length; pixel += 1, index += 4) {
+      const label = labelData[pixel]
+      if (!eligible[label]) continue
+      const light = pixelLuma(analysisData[index], analysisData[index + 1], analysisData[index + 2])
+      sums[label] += light
+      sumSquares[label] += light * light
+      minimumLights[label] = Math.min(minimumLights[label], light)
+      maximumLights[label] = Math.max(maximumLights[label], light)
+      if (light >= 202 && light <= 240) shoulderPixels[label] += 1
+    }
+
+    const accepted = new Uint8Array(labelCount)
+    const regions: HighlightRegion[] = []
+    let recoverableCount = 0
+    for (let label = 1; label < labelCount; label += 1) {
+      if (!eligible[label]) continue
+      const offset = label * 5
+      const area = statsData[offset + 4]
+      const average = sums[label] / area
+      const deviation = Math.sqrt(Math.max(0, sumSquares[label] / area - average * average))
+      const isGraduatedBlob =
+        maximumLights[label] >= 245 &&
+        maximumLights[label] - minimumLights[label] >= 28 &&
+        deviation >= 7 &&
+        shoulderPixels[label] / area >= 0.18
+      if (!isGraduatedBlob) continue
+      accepted[label] = 1
+      const minX = statsData[offset]
+      const minY = statsData[offset + 1]
+      const boxWidth = statsData[offset + 2]
+      const boxHeight = statsData[offset + 3]
+      regions.push({ minX, maxX: minX + boxWidth - 1, minY, maxY: minY + boxHeight - 1 })
+      recoverableCount += area
+    }
+
+    const recoverable = new Uint8Array(labelData.length)
+    for (let pixel = 0; pixel < labelData.length; pixel += 1) {
+      recoverable[pixel] = accepted[labelData[pixel]]
     }
     return {
       data: recoverable,
@@ -206,6 +190,11 @@ function recoverableHighlightMask(cv: CV, source: Mat): HighlightAnalysis {
   } catch (error) {
     analysis.delete()
     throw error
+  } finally {
+    candidate.delete()
+    labels.delete()
+    stats.delete()
+    centroids.delete()
   }
 }
 
@@ -224,6 +213,7 @@ function applyGlareReduction(cv: CV, source: Mat) {
     const kernelSize = scaledOdd(fullKernel * analysisScale, 9, 101)
     cv.GaussianBlur(highlight.source, background, new cv.Size(kernelSize, kernelSize), 0)
     const pixels = source.data
+    const backgroundPixels = background.data
     const scaleX = highlight.width / source.cols
     const scaleY = highlight.height / source.rows
     for (const region of highlight.regions) {
@@ -255,10 +245,10 @@ function applyGlareReduction(cv: CV, source: Mat) {
           const bottomRight = (bottom * highlight.width + right) * 4
           const sampleChannel = (channel: number) =>
             mix(
-              mix(background.data[topLeft + channel], background.data[topRight + channel], mixX),
+              mix(backgroundPixels[topLeft + channel], backgroundPixels[topRight + channel], mixX),
               mix(
-                background.data[bottomLeft + channel],
-                background.data[bottomRight + channel],
+                backgroundPixels[bottomLeft + channel],
+                backgroundPixels[bottomRight + channel],
                 mixX,
               ),
               mixY,
@@ -374,12 +364,14 @@ function estimatePaperIllumination(cv: CV, source: Mat) {
       closes.push(closed)
     }
     const combined = closes[0].clone()
-    for (let index = 0; index < combined.data.length; index += 1) {
+    const combinedData = combined.data
+    const closeData = closes.map((mat) => mat.data)
+    for (let index = 0; index < combinedData.length; index += 1) {
       // The large scale bridges broad cast shadows; the smaller scales reduce edge halos.
-      combined.data[index] = Math.max(
-        closes[0].data[index] * 0.94,
-        closes[1].data[index] * 0.98,
-        closes[2].data[index],
+      combinedData[index] = Math.max(
+        closeData[0][index] * 0.94,
+        closeData[1][index] * 0.98,
+        closeData[2][index],
       )
     }
     const blurSize = scaledOdd(shortSide / 22, 9, 41)
@@ -415,8 +407,9 @@ function applyClassicalShadowRemoval(cv: CV, source: Mat, shadowStrength: number
       variation > 22 && paper < 184 ? 184 : paper,
     )
     const pixels = source.data
-    for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
-      const background = Math.max(36, illumination.data[pixel])
+    const illuminationData = illumination.data
+    for (let pixel = 0, index = 0; pixel < illuminationData.length; pixel += 1, index += 4) {
+      const background = Math.max(36, illuminationData[pixel])
       // Blend toward direct shade normalization. Applying the ratio from the
       // low-frequency illumination map preserves local ink contrast while
       // flattening broad gradients and cast shadows.
@@ -450,8 +443,9 @@ function applyBrightnessBalance(cv: CV, source: Mat, strength: number) {
     const target = (dark + bright) / 2
     const blend = Math.sqrt(normalizedStrength)
     const pixels = source.data
-    for (let pixel = 0, index = 0; pixel < illumination.data.length; pixel += 1, index += 4) {
-      const background = Math.max(24, illumination.data[pixel])
+    const illuminationData = illumination.data
+    for (let pixel = 0, index = 0; pixel < illuminationData.length; pixel += 1, index += 4) {
+      const background = Math.max(24, illuminationData[pixel])
       // Unlike shadow removal, this correction works in both directions:
       // shaded areas are lifted while overly lit areas are reduced toward the
       // shared target exposure. Matching RGB gains preserve the original hue.
@@ -525,12 +519,18 @@ function applyGrayscaleDocument(cv: CV, output: Mat, flattenPaper: boolean) {
     if (flattenPaper) applyClassicalShadowRemoval(cv, output, 92)
     cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
     cv.bilateralFilter(gray, denoised, 5, 22, 4)
-    const blackPoint = percentile(denoised.data, 0.018)
-    const paperPoint = Math.max(blackPoint + 48, percentile(denoised.data, 0.86))
+    const denoisedData = denoised.data
+    const blackPoint = percentile(denoisedData, 0.018)
+    const paperPercentile = percentile(denoisedData, 0.86)
+    const paperPoint = Math.max(blackPoint + 48, paperPercentile)
     const range = paperPoint - blackPoint
-    for (let index = 0; index < denoised.data.length; index += 1) {
-      const normalized = clamp((denoised.data[index] - blackPoint) / range, 0, 1)
-      denoised.data[index] = clamp(6 + 243 * normalized ** 0.82, 0, 255)
+    const toneMap = new Uint8Array(256)
+    for (let value = 0; value < toneMap.length; value += 1) {
+      const normalized = clamp((value - blackPoint) / range, 0, 1)
+      toneMap[value] = clamp(6 + 243 * normalized ** 0.82, 0, 255)
+    }
+    for (let index = 0; index < denoisedData.length; index += 1) {
+      denoisedData[index] = toneMap[denoisedData[index]]
     }
     cv.cvtColor(denoised, output, cv.COLOR_GRAY2RGBA)
   } finally {
@@ -548,13 +548,19 @@ function applyBlackWhiteDocument(cv: CV, output: Mat, flattenPaper: boolean) {
     if (flattenPaper) applyClassicalShadowRemoval(cv, output, 100)
     cv.cvtColor(output, gray, cv.COLOR_RGBA2GRAY)
     cv.bilateralFilter(gray, denoised, 5, 24, 4)
+    const denoisedData = denoised.data
     normalized.create(denoised.rows, denoised.cols, cv.CV_8UC1)
-    const blackPoint = percentile(denoised.data, 0.012)
-    const paperPoint = Math.max(blackPoint + 52, percentile(denoised.data, 0.86))
+    const normalizedData = normalized.data
+    const blackPoint = percentile(denoisedData, 0.012)
+    const paperPoint = Math.max(blackPoint + 52, percentile(denoisedData, 0.86))
     const range = paperPoint - blackPoint
-    for (let index = 0; index < denoised.data.length; index += 1) {
-      const value = clamp((denoised.data[index] - blackPoint) / range, 0, 1)
-      normalized.data[index] = clamp(5 + 248 * value ** 0.88, 0, 255)
+    const toneMap = new Uint8Array(256)
+    for (let value = 0; value < toneMap.length; value += 1) {
+      const normalized = clamp((value - blackPoint) / range, 0, 1)
+      toneMap[value] = clamp(5 + 248 * normalized ** 0.88, 0, 255)
+    }
+    for (let index = 0; index < denoisedData.length; index += 1) {
+      normalizedData[index] = toneMap[denoisedData[index]]
     }
     const blockSize = scaledOdd(Math.min(output.cols, output.rows) / 14, 41, 121)
     cv.adaptiveThreshold(
@@ -569,9 +575,11 @@ function applyBlackWhiteDocument(cv: CV, output: Mat, flattenPaper: boolean) {
     // Adaptive thresholding alone treats a large uniform red stamp as paper.
     // Combine it with the normalized global tone so coloured document content
     // remains visible while faint background texture stays white.
-    for (let index = 0; index < adaptive.data.length; index += 1) {
-      const value = normalized.data[index]
-      adaptive.data[index] = value < 194 || (adaptive.data[index] === 0 && value < 234) ? 0 : 255
+    const thresholdInput = normalized.data
+    const adaptiveData = adaptive.data
+    for (let index = 0; index < adaptiveData.length; index += 1) {
+      const value = thresholdInput[index]
+      adaptiveData[index] = value < 194 || (adaptiveData[index] === 0 && value < 234) ? 0 : 255
     }
     cv.cvtColor(adaptive, output, cv.COLOR_GRAY2RGBA)
   } finally {
@@ -624,42 +632,89 @@ function applyDetailEnhancement(cv: CV, output: Mat, strength: number) {
   }
 }
 
+function applyLightingEffects(
+  cv: CV,
+  output: Mat,
+  effects: EnhancementEffects,
+  adjustments: EnhancementSettings,
+) {
+  const glareHandledBeforeBalance = effects.shadow === 'balance' && effects.glare === 'deglare'
+  // Preserve highlight detection by repairing glare before brightness
+  // balancing can lower its luminance below the recovery threshold.
+  if (glareHandledBeforeBalance) {
+    applyGlareReduction(cv, output)
+  }
+  if (effects.shadow === 'deshadow') {
+    applyClassicalShadowRemoval(cv, output, adjustments.shadowStrength)
+  } else if (effects.shadow === 'balance') {
+    applyBrightnessBalance(cv, output, adjustments.shadowStrength)
+  }
+  if (effects.glare === 'deglare' && !glareHandledBeforeBalance) {
+    applyGlareReduction(cv, output)
+  }
+}
+
+function applyPostLightingEffects(
+  cv: CV,
+  output: Mat,
+  effects: EnhancementEffects,
+  adjustments: EnhancementSettings,
+) {
+  applyToneAdjustments(output, adjustments)
+  applyColorEffect(
+    cv,
+    output,
+    effects.color,
+    effects.shadow === 'none',
+    adjustments.whiteningStrength,
+  )
+  if (effects.detail === 'sharpen') {
+    applyDetailEnhancement(cv, output, adjustments.sharpness)
+  }
+}
+
+function processCopy(cv: CV, source: Mat, operation: (output: Mat) => void) {
+  // This OpenCV.js build exposes clone() as shared pixel storage. copyTo()
+  // keeps cached pipeline stages immutable while later effects edit in place.
+  const output = new cv.Mat()
+  source.copyTo(output)
+  try {
+    operation(output)
+    return output
+  } catch (error) {
+    output.delete()
+    throw error
+  }
+}
+
+export function createLightingResult(
+  cv: CV,
+  source: Mat,
+  effects: EnhancementEffects,
+  adjustments: EnhancementSettings,
+) {
+  return processCopy(cv, source, (output) => applyLightingEffects(cv, output, effects, adjustments))
+}
+
+export function processEffectsFromLighting(
+  cv: CV,
+  source: Mat,
+  effects: EnhancementEffects,
+  adjustments: EnhancementSettings,
+) {
+  return processCopy(cv, source, (output) =>
+    applyPostLightingEffects(cv, output, effects, adjustments),
+  )
+}
+
 export function processEffects(
   cv: CV,
   source: Mat,
   effects: EnhancementEffects,
   adjustments: EnhancementSettings,
 ) {
-  const output = source.clone()
-  try {
-    const glareHandledBeforeBalance = effects.shadow === 'balance' && effects.glare === 'deglare'
-    // Preserve highlight detection by repairing glare before brightness
-    // balancing can lower its luminance below the recovery threshold.
-    if (glareHandledBeforeBalance) {
-      applyGlareReduction(cv, output)
-    }
-    if (effects.shadow === 'deshadow') {
-      applyClassicalShadowRemoval(cv, output, adjustments.shadowStrength)
-    } else if (effects.shadow === 'balance') {
-      applyBrightnessBalance(cv, output, adjustments.shadowStrength)
-    }
-    if (effects.glare === 'deglare' && !glareHandledBeforeBalance) {
-      applyGlareReduction(cv, output)
-    }
-    applyToneAdjustments(output, adjustments)
-    applyColorEffect(
-      cv,
-      output,
-      effects.color,
-      effects.shadow === 'none',
-      adjustments.whiteningStrength,
-    )
-    if (effects.detail === 'sharpen') {
-      applyDetailEnhancement(cv, output, adjustments.sharpness)
-    }
-    return output
-  } catch (error) {
-    output.delete()
-    throw error
-  }
+  return processCopy(cv, source, (output) => {
+    applyLightingEffects(cv, output, effects, adjustments)
+    applyPostLightingEffects(cv, output, effects, adjustments)
+  })
 }

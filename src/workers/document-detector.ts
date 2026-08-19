@@ -89,10 +89,11 @@ function createAdaptiveEdgeMap(cv: CV, gray: Mat, kernel: Mat, inverse: boolean)
 
 function readQuad(mat: Mat, width: number, height: number) {
   const points: Point[] = []
+  const data = mat.data32S
   for (let index = 0; index < 4; index += 1) {
     points.push({
-      x: mat.data32S[index * 2] / width,
-      y: mat.data32S[index * 2 + 1] / height,
+      x: data[index * 2] / width,
+      y: data[index * 2 + 1] / height,
     })
   }
   return orderPoints(points)
@@ -134,6 +135,7 @@ function collectContourCandidates(cv: CV, edgeMap: Mat, sourceName: DetectionCan
       const hull = new cv.Mat()
       try {
         cv.convexHull(contour, hull, false, true)
+        const hullPerimeter = cv.arcLength(hull, true)
         for (const epsilon of epsilons) {
           const approximation = new cv.Mat()
           const hullApproximation = new cv.Mat()
@@ -146,7 +148,6 @@ function collectContourCandidates(cv: CV, edgeMap: Mat, sourceName: DetectionCan
                 sourceName,
               )
             }
-            const hullPerimeter = cv.arcLength(hull, true)
             cv.approxPolyDP(hull, hullApproximation, hullPerimeter * epsilon, true)
             if (hullApproximation.rows === 4 && cv.isContourConvex(hullApproximation)) {
               addRawCandidate(
@@ -182,7 +183,9 @@ function collectContourCandidates(cv: CV, edgeMap: Mat, sourceName: DetectionCan
 }
 
 function edgeSupport(edgeMap: Mat, corners: NormalizedQuad) {
-  const radius = Math.max(1, Math.round(Math.max(edgeMap.cols, edgeMap.rows) / 700))
+  const { cols, rows } = edgeMap
+  const data = edgeMap.data
+  const radius = Math.max(1, Math.round(Math.max(cols, rows) / 700))
   let hits = 0
   let samples = 0
   for (let side = 0; side < 4; side += 1) {
@@ -190,14 +193,14 @@ function edgeSupport(edgeMap: Mat, corners: NormalizedQuad) {
     const end = corners[(side + 1) % 4]
     for (let step = 1; step <= 36; step += 1) {
       const progress = step / 37
-      const x = Math.round((start.x + (end.x - start.x) * progress) * (edgeMap.cols - 1))
-      const y = Math.round((start.y + (end.y - start.y) * progress) * (edgeMap.rows - 1))
+      const x = Math.round((start.x + (end.x - start.x) * progress) * (cols - 1))
+      const y = Math.round((start.y + (end.y - start.y) * progress) * (rows - 1))
       let found = false
       for (let offsetY = -radius; offsetY <= radius && !found; offsetY += 1) {
         for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
-          const sampleX = clamp(x + offsetX, 0, edgeMap.cols - 1)
-          const sampleY = clamp(y + offsetY, 0, edgeMap.rows - 1)
-          if (edgeMap.data[sampleY * edgeMap.cols + sampleX] > 0) {
+          const sampleX = clamp(x + offsetX, 0, cols - 1)
+          const sampleY = clamp(y + offsetY, 0, rows - 1)
+          if (data[sampleY * cols + sampleX] > 0) {
             found = true
             break
           }
@@ -299,10 +302,11 @@ function extractHoughLines(cv: CV, edgeMap: Mat) {
       maxEdge * 0.04,
     )
     const lines: DetectedLine[] = []
-    for (let index = 0; index + 3 < output.data32S.length; index += 4) {
+    const data = output.data32S
+    for (let index = 0; index + 3 < data.length; index += 4) {
       const line = lineFromPoints(
-        { x: output.data32S[index], y: output.data32S[index + 1] },
-        { x: output.data32S[index + 2], y: output.data32S[index + 3] },
+        { x: data[index], y: data[index + 1] },
+        { x: data[index + 2], y: data[index + 3] },
       )
       if (line.length >= maxEdge * 0.2) lines.push(line)
     }
@@ -451,8 +455,35 @@ export function findDocumentQuad(
     } finally {
       clahe.delete()
     }
-    const illuminationKernel = scaledOdd(Math.min(source.cols, source.rows) / 12, 31, 101)
-    cv.GaussianBlur(enhanced, illumination, new cv.Size(illuminationKernel, illuminationKernel), 0)
+    // Illumination is low-frequency. Estimating it at a smaller scale avoids
+    // a large full-resolution Gaussian convolution without changing the
+    // document edges retained by the high-pass normalization.
+    const fullKernel = scaledOdd(Math.min(source.cols, source.rows) / 12, 31, 101)
+    const illuminationScale = Math.min(1, 480 / Math.max(source.cols, source.rows))
+    if (illuminationScale < 1) {
+      const small = new cv.Mat()
+      const blurred = new cv.Mat()
+      try {
+        const width = Math.max(1, Math.round(source.cols * illuminationScale))
+        const height = Math.max(1, Math.round(source.rows * illuminationScale))
+        const illuminationKernel = scaledOdd(fullKernel * illuminationScale, 9, 101)
+        cv.resize(enhanced, small, new cv.Size(width, height), 0, 0, cv.INTER_AREA)
+        cv.GaussianBlur(small, blurred, new cv.Size(illuminationKernel, illuminationKernel), 0)
+        cv.resize(
+          blurred,
+          illumination,
+          new cv.Size(source.cols, source.rows),
+          0,
+          0,
+          cv.INTER_CUBIC,
+        )
+      } finally {
+        small.delete()
+        blurred.delete()
+      }
+    } else {
+      cv.GaussianBlur(enhanced, illumination, new cv.Size(fullKernel, fullKernel), 0)
+    }
     cv.addWeighted(enhanced, 1, illumination, -1, 128, normalized)
 
     edgeMaps.push(
@@ -483,9 +514,17 @@ export function findDocumentQuad(
       deduplicateCandidates(evaluatedCandidates, source.cols, source.rows),
     )
     onProgress?.(82, '正在补全缺失边线')
-    const houghLines = extractHoughLines(cv, combined)
     const initialConfidence = calibrateDetectionConfidence(candidates[0], candidates[1])
-    if (!candidates[0] || candidates[0].score < 0.74 || initialConfidence < 0.72) {
+    const needsLineRecovery =
+      !candidates[0] || candidates[0].score < 0.74 || initialConfidence < 0.72
+    const needsLineRefinement =
+      Boolean(candidates[0]) && (candidates[0].score < 0.9 || initialConfidence < 0.9)
+    // A strong contour already follows all four supported edges. Hough is the
+    // most expensive remaining detection stage, so reserve it for ambiguous
+    // contours and scenes where a missing border must be reconstructed.
+    const houghLines =
+      needsLineRecovery || needsLineRefinement ? extractHoughLines(cv, combined) : []
+    if (needsLineRecovery) {
       evaluatedCandidates = [
         ...evaluatedCandidates,
         ...evaluateCandidates(
@@ -501,7 +540,7 @@ export function findDocumentQuad(
     }
 
     const best = candidates[0]
-    if (best) {
+    if (best && houghLines.length) {
       onProgress?.(91, '正在精修文档四角')
       const refinedCorners = refineCandidateWithLines(best, houghLines, source.cols, source.rows)
       if (refinedCorners) {
@@ -524,10 +563,8 @@ export function findDocumentQuad(
       }
     }
 
-    return {
-      best: candidates[0],
-      confidence: calibrateDetectionConfidence(candidates[0], candidates[1]),
-    }
+    const confidence = calibrateDetectionConfidence(candidates[0], candidates[1])
+    return { best: candidates[0], confidence }
   } finally {
     gray.delete()
     enhanced.delete()

@@ -13,7 +13,7 @@ import type {
 } from '@/lib/types'
 import { findDocumentQuad } from './document-detector'
 import { detectGlare } from './image-enhancer'
-import { renderPage } from './page-renderer'
+import { clearRenderPipelineCache, renderPage } from './page-renderer'
 import { blobToImageData } from './worker-image-utils'
 
 const workerScope = self as unknown as DedicatedWorkerGlobalScope & {
@@ -89,6 +89,7 @@ async function detectDocument(
 ) {
   post({ id, type: 'progress', progress: 8, label: '正在载入本地图像引擎' })
   await ensureOpenCv(id)
+  clearRenderPipelineCache()
   const cv = cvRuntime
   if (!cv) throw new Error('OpenCV 尚未就绪')
   post({ id, type: 'progress', progress: 35, label: '正在分析文档边缘' })
@@ -139,19 +140,30 @@ async function renderDocument(
   maxEdge: number,
   mimeType: string,
   quality?: number,
+  cacheIntermediate = false,
 ) {
   post({ id, type: 'progress', progress: 10, label: '正在读取原图' })
   await ensureOpenCv(id)
   const cv = cvRuntime
   if (!cv) throw new Error('OpenCV 尚未就绪')
-  const rendered = await renderPage(cv, page, maxEdge, mimeType, quality, (progress, label) =>
-    post({ id, type: 'progress', progress, label }),
+  const rendered = await renderPage(
+    cv,
+    page,
+    maxEdge,
+    mimeType,
+    quality,
+    cacheIntermediate,
+    (progress, label) => post({ id, type: 'progress', progress, label }),
   )
   post({ id, type: 'rendered', ...rendered })
 }
 
 workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerRequest>) => {
   const request = event.data
+  if (request.type === 'invalidate-cache') {
+    clearRenderPipelineCache(request.pageId)
+    return
+  }
   const task =
     request.type === 'init'
       ? initialize(request.id)
@@ -163,6 +175,7 @@ workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerReques
             request.options.maxEdge,
             request.options.mimeType,
             request.options.quality,
+            request.cacheIntermediate,
           )
 
   void task.catch((error: unknown) => {

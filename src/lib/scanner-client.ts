@@ -312,6 +312,7 @@ export class ScannerClient {
       this.renderCache.delete(key)
       this.renderCacheBytes -= cached.blob.size
     }
+    this.worker?.postMessage({ id: createId(), type: 'invalidate-cache', pageId })
   }
 
   async prewarm() {
@@ -371,6 +372,7 @@ export class ScannerClient {
         type: 'render',
         page,
         options,
+        cacheIntermediate: intent === 'preview',
       },
       { intent, signal: requestOptions.signal },
     ).then((response) => {
