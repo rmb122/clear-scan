@@ -19,6 +19,15 @@ export function holdNextPageWrite() {
   return { release, writes }
 }
 
+export function holdNextProjectWrite() {
+  const { pending, release } = writeGate()
+  const update = db.projects.update.bind(db.projects)
+  const writes = vi
+    .spyOn(db.projects, 'update')
+    .mockImplementationOnce((...args) => Dexie.Promise.resolve(pending).then(() => update(...args)))
+  return { release, writes }
+}
+
 export function holdThumbnailEncoding() {
   const { pending, release } = writeGate()
   const blob = new Blob(['thumbnail'], { type: 'image/png' })

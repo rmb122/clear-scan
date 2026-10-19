@@ -64,6 +64,43 @@ afterEach(async () => {
 })
 
 describe('scan page persistence', () => {
+  it('shares watermark settings across existing and new pages and restores them on reopen', async () => {
+    await repository.putPage(makePage({ id: 'page-2', order: 1 }))
+    await repository.db.projects.put(makeProject({ id: 'project-2', name: '另一个项目' }))
+    await repository.putPage(makePage({ id: 'other-page', projectId: 'project-2' }))
+    const { unmount } = renderScanner()
+    fireEvent.click(await screen.findByRole('button', { name: '水印' }))
+    fireEvent.click(screen.getByRole('switch', { name: '启用水印' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '水印文字' }), {
+      target: { value: '仅供审核使用' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
+      target: { value: '申请材料' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '打开第 2 页' }))
+    fireEvent.click(screen.getByRole('button', { name: '水印' }))
+    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('仅供审核使用')
+    unmount()
+
+    await repository.putPage(makePage({ id: 'page-3', order: 2 }))
+    renderScanner()
+    await screen.findByDisplayValue('申请材料')
+    fireEvent.click(screen.getByRole('button', { name: '打开第 3 页' }))
+    fireEvent.click(screen.getByRole('button', { name: '水印' }))
+    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('仅供审核使用')
+    expect(screen.getByRole('switch', { name: '启用水印' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '完成' }))
+    fireEvent.click(screen.getByRole('link', { name: '另一个项目' }))
+    await screen.findByDisplayValue('另一个项目')
+    fireEvent.click(screen.getByRole('button', { name: '水印' }))
+    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('')
+    expect(screen.getByRole('switch', { name: '启用水印' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+  })
+
   it('keeps edits and the new order when reordering finishes after further editing', async () => {
     await repository.putPage(makePage({ id: 'page-2', order: 1 }))
     renderScanner()

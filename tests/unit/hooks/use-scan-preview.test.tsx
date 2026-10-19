@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { scannerClient } from '@/lib/scanner-client'
 import { useScanPreview } from '@/hooks/use-scan-preview'
+import { DEFAULT_WATERMARK } from '@/lib/types'
 import { makePage } from '../../support/scan-fixtures'
 
 afterEach(() => {
@@ -39,7 +40,7 @@ describe('useScanPreview', () => {
     expect(revokeUrl).toHaveBeenCalledWith('blob:preview-2')
   })
 
-  it('aborts an obsolete render and clears previews when the page changes', async () => {
+  it('aborts an obsolete project watermark render and clears previews when the page changes', async () => {
     const resolveRender: Array<(value: { blob: Blob; width: number; height: number }) => void> = []
     const render = vi.spyOn(scannerClient, 'render').mockImplementation(
       () =>
@@ -50,15 +51,20 @@ describe('useScanPreview', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
     const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
     const firstPage = makePage()
-    const { result, rerender } = renderHook(({ page, enabled }) => useScanPreview(page, enabled), {
-      initialProps: { page: firstPage, enabled: true },
-    })
+    const watermark = { ...DEFAULT_WATERMARK, enabled: true, text: '仅供申请使用' }
+    const { result, rerender } = renderHook(
+      ({ page, enabled, watermark }) => useScanPreview(page, enabled, watermark),
+      {
+        initialProps: { page: firstPage, enabled: true, watermark },
+      },
+    )
 
     await waitFor(() => expect(render).toHaveBeenCalledTimes(1))
     const signal = render.mock.calls[0][2]?.signal
     rerender({
-      page: { ...firstPage, adjustments: { ...firstPage.adjustments, brightness: 10 } },
+      page: firstPage,
       enabled: true,
+      watermark: { ...watermark, text: '仅供审核使用' },
     })
     expect(signal?.aborted).toBe(true)
     await waitFor(() => expect(render).toHaveBeenCalledTimes(2))
@@ -73,7 +79,7 @@ describe('useScanPreview', () => {
     })
     expect(result.current.preview?.url).toBe('blob:preview')
 
-    rerender({ page: makePage({ id: 'page-2' }), enabled: false })
+    rerender({ page: makePage({ id: 'page-2' }), enabled: false, watermark })
     expect(result.current.preview).toBeUndefined()
     expect(revokeUrl).toHaveBeenCalledWith('blob:preview')
   })

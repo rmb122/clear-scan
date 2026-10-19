@@ -1,7 +1,8 @@
 import { fitWithin } from './geometry'
 import { A4_MM, getIdCardSheetLayout, type IdCardSize } from './id-card-layout'
 import { scannerClient } from './scanner-client'
-import type { ScanPage, ScanProject } from './types'
+import type { ScanPage, ScanProject, WatermarkSettings } from './types'
+import { drawWatermark, hasWatermark } from './watermark'
 import { sanitizeFileName } from './utils'
 import { messages } from './i18n'
 
@@ -36,10 +37,14 @@ async function canvasToBlob(
   })
 }
 
-async function renderScanPage(page: ScanPage, mimeType: 'image/jpeg' | 'image/png') {
+async function renderScanPage(
+  page: ScanPage,
+  mimeType: 'image/jpeg' | 'image/png',
+  watermark?: WatermarkSettings,
+) {
   return scannerClient.render(
     page,
-    { maxEdge: 3000, mimeType, quality: 0.94 },
+    { maxEdge: 3000, mimeType, quality: 0.94, watermark },
     { intent: 'export' },
   )
 }
@@ -48,6 +53,7 @@ async function composeIdCard(
   pages: ScanPage[],
   mimeType: 'image/jpeg' | 'image/png',
   size: IdCardSize,
+  watermark?: WatermarkSettings,
   onProgress?: (value: number, label: string) => void,
 ) {
   const front = pages.find((page) => page.role === 'front')
@@ -84,20 +90,26 @@ async function composeIdCard(
   context.drawImage(backBitmap, layout.back.x, layout.back.y, layout.back.width, layout.back.height)
   frontBitmap.close()
   backBitmap.close()
+  drawWatermark(context, layout.front, watermark)
+  drawWatermark(context, layout.back, watermark)
 
   onProgress?.(85, messages.composingA4)
   const blob = await canvasToBlob(canvas, mimeType)
   return { blob, width: canvas.width, height: canvas.height }
 }
 
-async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, fullPage = false) {
+async function createPdf(
+  renderedPages: Iterable<RenderedPage> | AsyncIterable<RenderedPage>,
+  layout: PdfLayout,
+  fullPage = false,
+) {
   const { PDFDocument } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
   pdf.setProducer(messages.pdfProducer)
   pdf.setCreator(messages.appName)
   pdf.setCreationDate(new Date())
 
-  for (const rendered of renderedPages) {
+  for await (const rendered of renderedPages) {
     const bytes = await rendered.blob.arrayBuffer()
     const image =
       rendered.blob.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
@@ -127,6 +139,8 @@ async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, fullP
       const page = pdf.addPage([width, height])
       page.drawImage(image, { x: 0, y: 0, width, height })
     }
+    // Finish embedding now so pdf-lib releases its decoder before the next page.
+    await image.embed()
   }
 
   const bytes = await pdf.save()
@@ -135,6 +149,64 @@ async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, fullP
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer
   return new Blob([buffer], { type: 'application/pdf' })
+}
+
+async function composeA4Page(rendered: RenderedPage, watermark?: WatermarkSettings) {
+  const canvas = document.createElement('canvas')
+  canvas.width = A4_PIXELS.width
+  canvas.height = A4_PIXELS.height
+  let bitmap: ImageBitmap | undefined
+  try {
+    bitmap = await createImageBitmap(rendered.blob)
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error(messages.renderFailed)
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    const margin = 24
+    const placement = fitWithin(
+      rendered.width,
+      rendered.height,
+      A4_POINTS.width - margin * 2,
+      A4_POINTS.height - margin * 2,
+    )
+    const scaleX = canvas.width / A4_POINTS.width
+    const scaleY = canvas.height / A4_POINTS.height
+    const content = {
+      x: (placement.x + margin) * scaleX,
+      y: (placement.y + margin) * scaleY,
+      width: placement.width * scaleX,
+      height: placement.height * scaleY,
+    }
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(bitmap, content.x, content.y, content.width, content.height)
+    drawWatermark(context, content, watermark)
+    // Only this flattened image enters the PDF, including the marked whitespace.
+    const blob = await canvasToBlob(canvas, 'image/jpeg')
+    return { blob, width: canvas.width, height: canvas.height }
+  } finally {
+    bitmap?.close()
+    canvas.width = 0
+    canvas.height = 0
+  }
+}
+
+async function* renderPdfPages(
+  pages: ScanPage[],
+  watermark: WatermarkSettings | undefined,
+  fullPage: boolean,
+  onProgress?: (value: number, label: string) => void,
+) {
+  for (const [index, page] of pages.entries()) {
+    onProgress?.(Math.round((index / pages.length) * 82), messages.processingPageNumber(index + 1))
+    // A lossless intermediate avoids encoding JPEG twice when composing an A4 sheet.
+    const rendered = await renderScanPage(
+      page,
+      fullPage ? 'image/png' : 'image/jpeg',
+      fullPage ? undefined : watermark,
+    )
+    yield fullPage ? await composeA4Page(rendered, watermark) : rendered
+  }
 }
 
 export async function exportProject(
@@ -151,7 +223,13 @@ export async function exportProject(
 
   if (project.mode === 'id-card') {
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
-    const composition = await composeIdCard(orderedPages, mimeType, idCardSize, onProgress)
+    const composition = await composeIdCard(
+      orderedPages,
+      mimeType,
+      idCardSize,
+      project.watermark,
+      onProgress,
+    )
     if (format === 'pdf') {
       const pdf = await createPdf([composition], 'a4', true)
       onProgress?.(100, messages.pdfGenerated)
@@ -166,7 +244,7 @@ export async function exportProject(
     if (orderedPages.length > 1) throw new Error(messages.multiPageExportFormat)
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
     onProgress?.(20, messages.processingPage)
-    const rendered = await renderScanPage(orderedPages[0], mimeType)
+    const rendered = await renderScanPage(orderedPages[0], mimeType, project.watermark)
     onProgress?.(100, messages.imageGenerated)
     return { blob: rendered.blob, fileName: `${baseName}.${format}` }
   }
@@ -179,7 +257,7 @@ export async function exportProject(
         Math.round((index / orderedPages.length) * 85),
         messages.processingPageNumber(index + 1),
       )
-      const rendered = await renderScanPage(orderedPages[index], 'image/jpeg')
+      const rendered = await renderScanPage(orderedPages[index], 'image/jpeg', project.watermark)
       zip.file(`${baseName}-${String(index + 1).padStart(2, '0')}.jpg`, rendered.blob)
     }
     // JPEG pages are already compressed; deflating them again costs CPU while
@@ -189,15 +267,9 @@ export async function exportProject(
     return { blob, fileName: messages.zipFileName(baseName) }
   }
 
-  const renderedPages: RenderedPage[] = []
-  for (let index = 0; index < orderedPages.length; index += 1) {
-    onProgress?.(
-      Math.round((index / orderedPages.length) * 82),
-      messages.processingPageNumber(index + 1),
-    )
-    renderedPages.push(await renderScanPage(orderedPages[index], 'image/jpeg'))
-  }
-  const blob = await createPdf(renderedPages, layout)
+  const fullPage = layout === 'a4' && hasWatermark(project.watermark)
+  const renderedPages = renderPdfPages(orderedPages, project.watermark, fullPage, onProgress)
+  const blob = await createPdf(renderedPages, layout, fullPage)
   onProgress?.(100, messages.pdfGenerated)
   return { blob, fileName: `${baseName}.pdf` }
 }

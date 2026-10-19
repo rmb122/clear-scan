@@ -35,6 +35,24 @@ interface PendingPageWrite {
 
 const pageWrites = new Map<string, PendingPageWrite>()
 const thumbnailWrites = new Map<string, PendingPageWrite>()
+const projectWrites = new Map<string, Promise<unknown>>()
+
+export function updateProjectSettings(
+  projectId: string,
+  changes: Partial<Pick<ScanProject, 'name' | 'passportLayout' | 'watermark'>>,
+) {
+  const updatedAt = Date.now()
+  const previous = projectWrites.get(projectId) ?? Promise.resolve()
+  const pending = previous
+    .catch(() => undefined)
+    .then(() => db.projects.update(projectId, { ...changes, updatedAt }))
+  projectWrites.set(projectId, pending)
+  const release = () => {
+    if (projectWrites.get(projectId) === pending) projectWrites.delete(projectId)
+  }
+  void pending.then(release, release)
+  return pending
+}
 
 function queuePageWrite<T>(
   page: Pick<ScanPage, 'id' | 'projectId'>,
@@ -59,6 +77,8 @@ async function waitForProjectWrites(projectId: string) {
     const pending = [...pageWrites.values()]
       .filter((entry) => entry.projectId === projectId)
       .map((entry) => entry.promise)
+    const projectWrite = projectWrites.get(projectId)
+    if (projectWrite) pending.push(projectWrite)
     if (!pending.length) return
     // Writers report their own errors; a failed write must not strand readers.
     await Promise.allSettled(pending)

@@ -44,11 +44,32 @@ export interface EnhancementSettings {
   whiteningStrength: number
 }
 
+export interface WatermarkSettings {
+  enabled: boolean
+  text: string
+  fontSize: number
+  opacity: number
+  color: string
+  angle: number
+  spacing: number
+}
+
+export const DEFAULT_WATERMARK: WatermarkSettings = {
+  enabled: false,
+  text: '',
+  fontSize: 36,
+  opacity: 25,
+  color: '#808080',
+  angle: -30,
+  spacing: 80,
+}
+
 export interface ScanProject {
   id: string
   name: string
   mode: ScanMode
   passportLayout?: PassportLayout
+  watermark?: WatermarkSettings
   createdAt: number
   updatedAt: number
 }
@@ -88,6 +109,7 @@ export interface RenderOptions {
   maxEdge: number
   mimeType: 'image/jpeg' | 'image/png'
   quality?: number
+  watermark?: WatermarkSettings
 }
 
 interface WorkerRequestBase {

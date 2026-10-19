@@ -1,6 +1,7 @@
 import type { CV, Mat } from '@techstark/opencv-js'
 import { distance, orderPoints } from '@/lib/geometry'
-import type { ScanPage } from '@/lib/types'
+import type { RenderOptions, ScanPage } from '@/lib/types'
+import { drawWatermark } from '@/lib/watermark'
 import { createLightingResult, processEffects, processEffectsFromLighting } from './image-enhancer'
 import { blobToImageData } from './worker-image-utils'
 import { messages } from '@/lib/i18n'
@@ -144,12 +145,11 @@ async function preparePageBase(cv: CV, page: ScanPage, maxEdge: number) {
 export async function renderPage(
   cv: CV,
   page: ScanPage,
-  maxEdge: number,
-  mimeType: string,
-  quality = 0.92,
+  options: RenderOptions,
   cacheIntermediate = false,
   onProgress?: (progress: number, label: string) => void,
 ) {
+  const { maxEdge, mimeType, quality = 0.92, watermark } = options
   const baseKey = createBaseKey(page, maxEdge)
   let base = cacheIntermediate && previewCache?.baseKey === baseKey ? previewCache.base : undefined
   let ownsBase = false
@@ -195,6 +195,7 @@ export async function renderPage(
       filtered.data.byteLength,
     )
     context.putImageData(new ImageData(pixels, filtered.cols, filtered.rows), 0, 0)
+    drawWatermark(context, { x: 0, y: 0, width: canvas.width, height: canvas.height }, watermark)
     const blob = await canvas.convertToBlob({ type: mimeType, quality })
     onProgress?.(100, messages.processingComplete)
     return { blob, width: filtered.cols, height: filtered.rows }

@@ -10,10 +10,15 @@ import {
   getProjectWithPages,
   updatePageMetadata,
   updatePageWithThumbnail,
+  updateProjectSettings,
 } from '@/lib/db'
 import { makePage, makeProject } from '../../support/scan-fixtures'
-import { holdNextPageWrite, holdThumbnailEncoding } from '../../support/persistence'
-import { DEFAULT_ADJUSTMENTS, SMART_EFFECTS } from '@/lib/types'
+import {
+  holdNextPageWrite,
+  holdNextProjectWrite,
+  holdThumbnailEncoding,
+} from '../../support/persistence'
+import { DEFAULT_ADJUSTMENTS, DEFAULT_WATERMARK, SMART_EFFECTS } from '@/lib/types'
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -22,6 +27,36 @@ afterEach(async () => {
 
 describe('local scan repository', () => {
   describe('project reads during queued writes', () => {
+    it('waits for the latest watermark without losing other project settings', async () => {
+      await db.projects.put(makeProject())
+      const gate = holdNextProjectWrite()
+      const watermark = { ...DEFAULT_WATERMARK, enabled: true, text: '仅供申请使用' }
+      const first = updateProjectSettings('project-1', { watermark })
+      const reading = getProjectWithPages('project-1')
+      const received = vi.fn()
+      void reading.then(received)
+      const later: Promise<unknown>[] = []
+      try {
+        await vi.waitFor(() => expect(gate.writes).toHaveBeenCalled())
+        expect(received).not.toHaveBeenCalled()
+        later.push(
+          updateProjectSettings('project-1', { name: '重命名文档', passportLayout: 'spread' }),
+        )
+        later.push(
+          updateProjectSettings('project-1', { watermark: { ...watermark, text: '仅供审核使用' } }),
+        )
+        gate.release()
+        expect((await reading).project).toMatchObject({
+          name: '重命名文档',
+          passportLayout: 'spread',
+          watermark: { ...watermark, text: '仅供审核使用' },
+        })
+      } finally {
+        gate.release()
+        await Promise.allSettled([first, reading, ...later])
+      }
+    })
+
     it.each(['pages', 'project'] as const)(
       'loads current %s metadata without waiting for thumbnail encoding',
       async (kind) => {

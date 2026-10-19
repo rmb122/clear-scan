@@ -117,6 +117,7 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
         <Button
           disabled={!pages.length || !idComplete || !allCropsConfirmed}
           title={!allCropsConfirmed ? messages.confirmCropsFirst : undefined}
+          className="px-3 sm:px-4"
         >
           <Download />
           {messages.export}

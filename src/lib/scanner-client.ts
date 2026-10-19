@@ -10,6 +10,7 @@ import type {
 } from './types'
 import { createId } from './utils'
 import { locale, messages } from './i18n'
+import { hasWatermark } from './watermark'
 
 type RequestIntent = 'init' | 'detect' | 'preview' | 'export'
 type TimeoutMessage =
@@ -86,6 +87,7 @@ export function isAbortError(error: unknown) {
 }
 
 export function createRenderCacheKey(page: ScanPage, options: RenderOptions) {
+  const watermark = options.watermark
   return JSON.stringify([
     page.id,
     page.createdAt,
@@ -106,6 +108,16 @@ export function createRenderCacheKey(page: ScanPage, options: RenderOptions) {
     options.maxEdge,
     options.mimeType,
     options.quality ?? 0.92,
+    hasWatermark(watermark)
+      ? [
+          watermark.text.trim(),
+          watermark.fontSize,
+          watermark.opacity,
+          watermark.color,
+          watermark.angle,
+          watermark.spacing,
+        ]
+      : null,
   ])
 }
 

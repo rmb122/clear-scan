@@ -15,6 +15,7 @@ import {
   type ScanStage,
 } from '@/components/scan-page-view'
 import { Button } from '@/components/ui/button'
+import { WatermarkDialog } from '@/components/watermark-dialog'
 import { useScanPersistence } from '@/hooks/use-scan-persistence'
 import { useScanPreview } from '@/hooks/use-scan-preview'
 import {
@@ -24,6 +25,7 @@ import {
   putPage,
   updatePageMetadata,
   updatePageWithThumbnail,
+  updateProjectSettings,
 } from '@/lib/db'
 import { DEFAULT_QUAD } from '@/lib/geometry'
 import { hasCachedEngineAsset } from '@/lib/engine-cache'
@@ -42,6 +44,7 @@ import {
   type ScanMode,
   type ScanPage as ScanPageModel,
   type ScanProject,
+  type WatermarkSettings,
 } from '@/lib/types'
 import { createId, modeDefaultName } from '@/lib/utils'
 import { messages } from '@/lib/i18n'
@@ -124,7 +127,7 @@ export function ScanPage() {
     isCurrent: previewIsCurrent,
     rendering,
     clearPreview,
-  } = useScanPreview(active, stage === 'enhance')
+  } = useScanPreview(active, stage === 'enhance', project?.watermark)
   const updateActive = useCallback(
     (update: (page: ScanPageModel) => ScanPageModel) => {
       if (!activePageId) return
@@ -487,12 +490,12 @@ export function ScanPage() {
       }
       setProject(updated)
       try {
-        await db.projects.put(updated)
+        await updateProjectSettings(project.id, { passportLayout: layout })
       } catch (reason) {
         setPassportLayoutState((current) => (current === layout ? previousLayout : current))
         setProject((current) =>
           current?.id === updated.id && current.passportLayout === layout
-            ? previousProject
+            ? { ...current, passportLayout: previousProject?.passportLayout }
             : current,
         )
         toast.error(messages.passportLayoutSaveFailed, {
@@ -507,9 +510,20 @@ export function ScanPage() {
     if (!project) return
     const updated = { ...project, name, updatedAt: Date.now() }
     setProject(updated)
-    void db.projects.put(updated).catch((reason: unknown) => {
+    void updateProjectSettings(project.id, { name }).catch((reason: unknown) => {
       toast.error(messages.projectNameSaveFailed, {
         id: 'project-name-save-error',
+        description: reason instanceof Error ? reason.message : messages.storageWriteFailed,
+      })
+    })
+  }
+
+  const changeWatermark = (watermark: WatermarkSettings) => {
+    if (!project) return
+    setProject({ ...project, watermark, updatedAt: Date.now() })
+    void updateProjectSettings(project.id, { watermark }).catch((reason: unknown) => {
+      toast.error(messages.watermarkSaveFailed, {
+        id: 'watermark-save-error',
         description: reason instanceof Error ? reason.message : messages.storageWriteFailed,
       })
     })
@@ -725,6 +739,19 @@ export function ScanPage() {
         pages={sortedPages}
         onBack={() => navigate('/')}
         onRename={renameProject}
+        watermarkControl={
+          project && (
+            <WatermarkDialog
+              key={project.id}
+              settings={project.watermark}
+              onChange={changeWatermark}
+              disabled={pages.length === 0}
+              previewAvailable={Boolean(active?.cropConfirmed && stage === 'enhance')}
+              previewUrl={activePreview?.url}
+              previewIsCurrent={previewIsCurrent}
+            />
+          )
+        }
       />
       <ScanStageNavigation stage={stage} />
 

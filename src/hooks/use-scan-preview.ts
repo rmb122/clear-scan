@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createRenderCacheKey, isAbortError, scannerClient } from '@/lib/scanner-client'
-import type { ScanPage } from '@/lib/types'
+import type { ScanPage, WatermarkSettings } from '@/lib/types'
 import { messages } from '@/lib/i18n'
 
 interface RenderedPreview {
@@ -17,15 +17,22 @@ const PREVIEW_RENDER_OPTIONS = {
   quality: 0.9,
 } as const
 
-export function useScanPreview(page: ScanPage | undefined, enabled: boolean) {
+export function useScanPreview(
+  page: ScanPage | undefined,
+  enabled: boolean,
+  watermark?: WatermarkSettings,
+) {
   const previewRef = useRef<RenderedPreview | undefined>(undefined)
   const pageRef = useRef(page)
+  const options = { ...PREVIEW_RENDER_OPTIONS, watermark }
+  const optionsRef = useRef(options)
   const [preview, setPreview] = useState<RenderedPreview>()
   const [rendering, setRendering] = useState(false)
   const [retryVersion, setRetryVersion] = useState(0)
   pageRef.current = page
+  optionsRef.current = options
 
-  const renderKey = page ? createRenderCacheKey(page, PREVIEW_RENDER_OPTIONS) : undefined
+  const renderKey = page ? createRenderCacheKey(page, options) : undefined
 
   const replacePreview = useCallback((next?: RenderedPreview) => {
     if (previewRef.current) URL.revokeObjectURL(previewRef.current.url)
@@ -52,13 +59,14 @@ export function useScanPreview(page: ScanPage | undefined, enabled: boolean) {
 
   useEffect(() => {
     const currentPage = pageRef.current
+    const currentOptions = optionsRef.current
     if (!enabled || !currentPage || !renderKey) return
     let cancelled = false
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setRendering(true)
       void scannerClient
-        .render(currentPage, PREVIEW_RENDER_OPTIONS, {
+        .render(currentPage, currentOptions, {
           intent: 'preview',
           signal: controller.signal,
         })

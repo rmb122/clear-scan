@@ -6,6 +6,7 @@ import { orderPoints } from '@/lib/geometry'
 import type {
   DetectionResult,
   PassportLayout,
+  RenderOptions,
   ScanMode,
   ScanPage,
   ScannerWorkerRequest,
@@ -138,23 +139,15 @@ async function initialize(id: string) {
 async function renderDocument(
   id: string,
   page: ScanPage,
-  maxEdge: number,
-  mimeType: string,
-  quality?: number,
+  options: RenderOptions,
   cacheIntermediate = false,
 ) {
   post({ id, type: 'progress', progress: 10, label: messages.readingOriginal })
   await ensureOpenCv(id)
   const cv = cvRuntime
   if (!cv) throw new Error(messages.openCvNotReady)
-  const rendered = await renderPage(
-    cv,
-    page,
-    maxEdge,
-    mimeType,
-    quality,
-    cacheIntermediate,
-    (progress, label) => post({ id, type: 'progress', progress, label }),
+  const rendered = await renderPage(cv, page, options, cacheIntermediate, (progress, label) =>
+    post({ id, type: 'progress', progress, label }),
   )
   post({ id, type: 'rendered', ...rendered })
 }
@@ -171,14 +164,7 @@ workerScope.addEventListener('message', (event: MessageEvent<ScannerWorkerReques
       ? initialize(request.id)
       : request.type === 'detect'
         ? detectDocument(request.id, request.source, request.mode, request.passportLayout)
-        : renderDocument(
-            request.id,
-            request.page,
-            request.options.maxEdge,
-            request.options.mimeType,
-            request.options.quality,
-            request.cacheIntermediate,
-          )
+        : renderDocument(request.id, request.page, request.options, request.cacheIntermediate)
 
   void task.catch((error: unknown) => {
     const message = error instanceof Error ? error.message : messages.imageProcessingFailed

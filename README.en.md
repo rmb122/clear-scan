@@ -68,6 +68,13 @@ The interface supports Simplified Chinese and English. By default, the app picks
 - Fine controls for brightness, contrast, shadow or balancing strength, and sharpening strength.
 - Clockwise and counterclockwise 90° rotation; effects from different categories can be combined.
 
+### Custom watermarks
+
+- Click **Watermark**, to the left of **Export** in the scan editor, to open settings with a live preview of the current page.
+- Add tiled text with adjustable font size, opacity, color, angle, and spacing. Watermarks are off by default.
+- Settings are saved locally for the whole project, including new pages and both sides of an ID card. JPG, PNG, PDF, and ZIP exports all support watermarks.
+- On A4 exports, the watermark extends beyond each page's content or each ID-card side by 10% of its short edge, using existing whitespace only. Single-page images gain no borders, and actual-size ID-card placement is preserved.
+
 ### Local history and export
 
 - Projects, source images, thumbnails, crop corners, and enhancement settings remain in the current browser.
@@ -88,7 +95,7 @@ The interface supports Simplified Chinese and English. By default, the app picks
 2. Take a photo or import images from a gallery or computer.
 3. Review the detected corners and, when necessary, refine them with the offset handles and magnifier.
 4. Choose a preset, combine enhancement effects, rotate, or fine-tune individual parameters.
-5. Confirm every page and export. The project remains in local history until it is deleted manually.
+5. Optionally open **Watermark** to configure a project watermark, then confirm every page and export. The project remains in local history until it is deleted manually.
 
 ## Processing and data flow
 

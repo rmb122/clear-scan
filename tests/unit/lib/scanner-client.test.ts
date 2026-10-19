@@ -8,7 +8,7 @@ import {
   isEngineTimeout,
 } from '@/lib/scanner-client'
 import { messages, setLocale } from '@/lib/i18n'
-import type { ScannerWorkerRequest } from '@/lib/types'
+import { DEFAULT_WATERMARK, type ScannerWorkerRequest, type WatermarkSettings } from '@/lib/types'
 import { makePage } from '../../support/scan-fixtures'
 
 class WorkerMock extends EventTarget {
@@ -292,6 +292,32 @@ describe('scanner request scheduling', () => {
 })
 
 describe('render cache keys', () => {
+  it('distinguishes watermark edits while reusing the unmarked render when disabled or blank', () => {
+    const page = makePage()
+    const options = { maxEdge: 3000, mimeType: 'image/png' as const }
+    const watermark = { ...DEFAULT_WATERMARK, enabled: true, text: '仅供申请使用' }
+    const original = createRenderCacheKey(page, { ...options, watermark })
+    const changes: Partial<WatermarkSettings>[] = [
+      { text: '仅供审核使用' },
+      { color: '#ff0000' },
+      { opacity: 50 },
+      { fontSize: 48 },
+      { angle: 30 },
+      { spacing: 120 },
+      { enabled: false },
+    ]
+    for (const change of changes) {
+      expect(
+        createRenderCacheKey(page, { ...options, watermark: { ...watermark, ...change } }),
+      ).not.toBe(original)
+    }
+    for (const change of [{ enabled: false }, { text: '   ' }]) {
+      expect(
+        createRenderCacheKey(page, { ...options, watermark: { ...watermark, ...change } }),
+      ).toBe(createRenderCacheKey(page, options))
+    }
+  })
+
   it('ignores autosave timestamps but changes with pixels or output options', () => {
     const options = { maxEdge: 3000, mimeType: 'image/jpeg' as const, quality: 0.94 }
     const original = makePage()

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import {
   ArrowLeft,
   ChevronRight,
@@ -32,12 +33,14 @@ export function ScanPageHeader({
   pages,
   onBack,
   onRename,
+  watermarkControl,
 }: {
   mode: ScanMode
   project?: ScanProject
   pages: ScanPage[]
   onBack: () => void
   onRename: (name: string) => void
+  watermarkControl?: ReactNode
 }) {
   useLocale()
   const modeLabels: Record<ScanMode, string> = {
@@ -51,14 +54,14 @@ export function ScanPageHeader({
         <Button variant="ghost" size="icon" onClick={onBack} aria-label={messages.backHome}>
           <ArrowLeft />
         </Button>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap">
+        <div className="col-span-3 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap sm:col-span-1 sm:col-start-2 sm:row-start-1">
           <Badge variant="secondary">{modeLabels[mode]}</Badge>
           <span className="text-[10px] font-semibold text-muted-foreground">
             {messages.pageCount(pages.length)}
           </span>
         </div>
         {project ? (
-          <div className="group col-span-3 row-start-2 w-fit min-w-0 max-w-full sm:col-span-1 sm:col-start-3 sm:row-start-1">
+          <div className="group col-span-3 row-start-3 w-fit min-w-0 max-w-full sm:col-span-1 sm:col-start-3 sm:row-start-1">
             <label
               className="flex max-w-sm cursor-text items-center gap-2 border-b border-transparent py-1 transition hover:border-border focus-within:border-primary"
               title={messages.renameHint}
@@ -85,11 +88,12 @@ export function ScanPageHeader({
             </label>
           </div>
         ) : (
-          <h1 className="col-span-3 row-start-2 text-sm font-bold sm:col-span-1 sm:col-start-3 sm:row-start-1">
+          <h1 className="col-span-3 row-start-3 text-sm font-bold sm:col-span-1 sm:col-start-3 sm:row-start-1">
             {messages.newScan(modeLabels[mode])}
           </h1>
         )}
-        <div className="col-start-3 row-start-1 justify-self-end sm:col-start-4">
+        <div className="col-span-2 col-start-2 row-start-1 flex items-center justify-self-end gap-2 sm:col-span-1 sm:col-start-4">
+          {watermarkControl}
           {project && <ExportDialog project={project} pages={pages} />}
         </div>
       </div>
