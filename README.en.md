@@ -25,6 +25,10 @@
   <a href="https://github.com/rmb122/clear-scan/issues">Report an issue</a>
 </p>
 
+<p align="center">
+  If you find Clear Scan useful, please give it a <a href="https://github.com/rmb122/clear-scan">Star</a> on GitHub!
+</p>
+
 ## Overview
 
 Clear Scan turns a phone or desktop browser into a lightweight document scanner. It accepts images from the system camera, a webcam, or local files, detects document boundaries, corrects perspective, and performs cropping, enhancement, history management, and export on the device.

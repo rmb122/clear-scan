@@ -25,6 +25,10 @@
   <a href="https://github.com/rmb122/clear-scan/issues">问题反馈</a>
 </p>
 
+<p align="center">
+  如果觉得清晰扫描好用, 欢迎点击仓库右上角的 <a href="https://github.com/rmb122/clear-scan">Star</a> 支持一下!
+</p>
+
 ## 项目简介
 
 清晰扫描将手机或电脑浏览器变成一台轻量扫描仪。它可以从系统相机、网页摄像头或本地图片获取内容，自动识别文档边缘并校正透视，然后在设备上完成裁剪、增强、历史保存和文件导出。
