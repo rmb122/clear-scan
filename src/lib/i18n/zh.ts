@@ -78,7 +78,7 @@ export const zh = {
   chooseScanType: '选择证件类型',
   noSignup: '无需注册',
   worksOffline: '可离线使用',
-  noWatermark: '无强制水印',
+  customWatermark: '自定义水印',
   edgesDetected: '边缘已识别',
   autoEnhance: '自动增强',
   multiPagePdf: '多页 PDF',

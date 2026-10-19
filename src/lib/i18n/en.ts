@@ -81,7 +81,7 @@ export const en = {
   chooseScanType: 'Choose scan type',
   noSignup: 'No sign-up',
   worksOffline: 'Works offline',
-  noWatermark: 'No forced watermarks',
+  customWatermark: 'Custom watermarks',
   edgesDetected: 'Edges detected',
   autoEnhance: 'Auto enhance',
   multiPagePdf: 'Multi-page PDF',

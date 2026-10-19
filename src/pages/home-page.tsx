@@ -96,7 +96,7 @@ export function HomePage() {
               <Check className="size-3.5 text-primary" /> {messages.worksOffline}
             </span>
             <span className="flex items-center gap-1.5">
-              <Check className="size-3.5 text-primary" /> {messages.noWatermark}
+              <Check className="size-3.5 text-primary" /> {messages.customWatermark}
             </span>
           </div>
         </div>
