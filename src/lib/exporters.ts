@@ -1,5 +1,5 @@
 import { fitWithin } from './geometry'
-import { getIdCardSheetLayout } from './id-card-layout'
+import { A4_MM, getIdCardSheetLayout, type IdCardSize } from './id-card-layout'
 import { scannerClient } from './scanner-client'
 import type { ScanPage, ScanProject } from './types'
 import { sanitizeFileName } from './utils'
@@ -19,7 +19,7 @@ interface RenderedPage {
   height: number
 }
 
-const A4_POINTS = { width: 595.28, height: 841.89 }
+const A4_POINTS = { width: (A4_MM.width / 25.4) * 72, height: (A4_MM.height / 25.4) * 72 }
 const A4_PIXELS = { width: 2480, height: 3508 }
 
 async function canvasToBlob(
@@ -47,6 +47,7 @@ async function renderScanPage(page: ScanPage, mimeType: 'image/jpeg' | 'image/pn
 async function composeIdCard(
   pages: ScanPage[],
   mimeType: 'image/jpeg' | 'image/png',
+  size: IdCardSize,
   onProgress?: (value: number, label: string) => void,
 ) {
   const front = pages.find((page) => page.role === 'front')
@@ -70,7 +71,7 @@ async function composeIdCard(
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
 
-  const layout = getIdCardSheetLayout(canvas.width, canvas.height)
+  const layout = getIdCardSheetLayout(canvas.width, canvas.height, size)
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = 'high'
   context.drawImage(
@@ -89,7 +90,7 @@ async function composeIdCard(
   return { blob, width: canvas.width, height: canvas.height }
 }
 
-async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, forceA4 = false) {
+async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, fullPage = false) {
   const { PDFDocument } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
   pdf.setProducer(messages.pdfProducer)
@@ -100,18 +101,21 @@ async function createPdf(renderedPages: RenderedPage[], layout: PdfLayout, force
     const bytes = await rendered.blob.arrayBuffer()
     const image =
       rendered.blob.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
-    const useA4 = forceA4 || layout === 'a4'
-    if (useA4) {
+    if (layout === 'a4') {
       const page = pdf.addPage([A4_POINTS.width, A4_POINTS.height])
-      const placement = fitWithin(
-        rendered.width,
-        rendered.height,
-        A4_POINTS.width - 48,
-        A4_POINTS.height - 48,
-      )
+      const margin = fullPage ? 0 : 24
+      // A composed sheet already includes its whitespace and physical sizing.
+      const placement = fullPage
+        ? { x: 0, y: 0, ...A4_POINTS }
+        : fitWithin(
+            rendered.width,
+            rendered.height,
+            A4_POINTS.width - margin * 2,
+            A4_POINTS.height - margin * 2,
+          )
       page.drawImage(image, {
-        x: placement.x + 24,
-        y: A4_POINTS.height - placement.y - placement.height - 24,
+        x: placement.x + margin,
+        y: A4_POINTS.height - placement.y - placement.height - margin,
         width: placement.width,
         height: placement.height,
       })
@@ -138,6 +142,7 @@ export async function exportProject(
   pages: ScanPage[],
   format: ExportFormat,
   layout: PdfLayout,
+  idCardSize: IdCardSize = 'original',
   onProgress?: (value: number, label: string) => void,
 ): Promise<ExportResult> {
   const baseName = sanitizeFileName(project.name)
@@ -146,7 +151,7 @@ export async function exportProject(
 
   if (project.mode === 'id-card') {
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
-    const composition = await composeIdCard(orderedPages, mimeType, onProgress)
+    const composition = await composeIdCard(orderedPages, mimeType, idCardSize, onProgress)
     if (format === 'pdf') {
       const pdf = await createPdf([composition], 'a4', true)
       onProgress?.(100, messages.pdfGenerated)

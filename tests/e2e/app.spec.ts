@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
+import { PDFDocument } from 'pdf-lib'
 import { waitForScannerReady } from './helpers'
 
 test('home page loads synchronously without a route loading overlay', async ({ page }) => {
@@ -409,6 +411,52 @@ test('ID card and passport modes expose their specialized capture flows', async 
   await expect(page.getByRole('heading', { name: '拍摄护照资料页' })).toBeVisible()
   await expect(page.getByRole('button', { name: '资料页单页' })).toBeVisible()
   await expect(page.getByRole('button', { name: '展开双页' })).toBeVisible()
+})
+
+test('ID card export defaults to actual size and keeps the selection across formats', async ({
+  page,
+}) => {
+  await page.goto('/#/scan/id-card')
+  for (const side of ['人像面', '国徽面']) {
+    await expect(page.getByRole('heading', { name: `拍摄身份证${side}` })).toBeVisible()
+    await waitForScannerReady(page)
+    await page
+      .locator('input[type="file"]')
+      .nth(1)
+      .setInputFiles(path.resolve('tests/e2e/fixtures/document.png'))
+    await page.getByRole('button', { name: '确认裁剪' }).click()
+    await page.getByRole('button', { name: '保存页面' }).click()
+  }
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const original = dialog.getByRole('button', { name: '原尺寸', exact: true })
+  const enlarged = dialog.getByRole('button', { name: '放大', exact: true })
+  await expect(original).toHaveAttribute('aria-pressed', 'true')
+  await expect(
+    dialog.getByText('按原尺寸排版正反两面, 每面 85.6 x 53.98 mm.', { exact: true }),
+  ).toBeVisible()
+
+  await enlarged.click()
+  await expect(enlarged).toHaveAttribute('aria-pressed', 'true')
+  await expect(original).toHaveAttribute('aria-pressed', 'false')
+  await dialog.getByRole('button', { name: /JPG 图片/ }).click()
+  await expect(enlarged).toHaveAttribute('aria-pressed', 'true')
+  await dialog.getByRole('button', { name: /PNG 图片/ }).click()
+  await expect(enlarged).toHaveAttribute('aria-pressed', 'true')
+  await original.click()
+  await dialog.getByRole('button', { name: /PDF 文档/ }).click()
+  await expect(original).toHaveAttribute('aria-pressed', 'true')
+
+  const downloadPromise = page.waitForEvent('download')
+  await dialog.getByRole('button', { name: '生成并下载' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/)
+  const pdf = await PDFDocument.load(await readFile((await download.path())!))
+  expect(pdf.getPageCount()).toBe(1)
+  const size = pdf.getPages()[0].getSize()
+  expect((size.width / 72) * 25.4).toBeCloseTo(210)
+  expect((size.height / 72) * 25.4).toBeCloseTo(297)
 })
 
 test('mobile bottom navigation keeps a compact fixed height', async ({ page }, testInfo) => {

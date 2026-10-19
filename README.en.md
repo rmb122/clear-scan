@@ -37,13 +37,13 @@ The interface supports Simplified Chinese and English. By default, the app picks
 
 ### Three scan modes
 
-| Mode     | Main capabilities                                                                        | Typical output                                                       |
-| -------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| ID card  | Guided capture for both sides, standard card-ratio detection, and perspective correction | Both sides arranged as large images on one A4 page; JPG, PNG, or PDF |
-| Passport | Dedicated ratios for a single biodata page or a full two-page spread                     | JPG, PNG, or PDF; multi-page projects can use PDF or ZIP             |
-| Document | Batch import, continuous capture, page reordering, and multi-page management             | Single-page JPG/PNG, multi-page PDF, or a ZIP of JPG files           |
+| Mode     | Main capabilities                                                                        | Typical output                                                    |
+| -------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| ID card  | Guided capture for both sides, standard card-ratio detection, and perspective correction | Both sides on one A4 page; JPG/PNG/PDF at actual or enlarged size |
+| Passport | Dedicated ratios for a single biodata page or a full two-page spread                     | JPG, PNG, or PDF; multi-page projects can use PDF or ZIP          |
+| Document | Batch import, continuous capture, page reordering, and multi-page management             | Single-page JPG/PNG, multi-page PDF, or a ZIP of JPG files        |
 
-> The A4 ID-card layout prioritizes legibility by enlarging both sides. It is not a 1:1 physical-size photocopy.
+> ID-card exports use actual size by default, at 85.6 x 53.98 mm per side, with an option to enlarge both sides. JPG/PNG use the corresponding proportions on an A4 canvas; PDF preserves physical dimensions and should be printed at actual size or 100% scale.
 
 ### Capture and cropping
 
@@ -71,12 +71,12 @@ The interface supports Simplified Chinese and English. By default, the app picks
 - Export is generated locally without a server-side conversion service.
 - Exported JPG and PNG files are re-encoded and do not retain the source photo's EXIF or location metadata.
 
-| Format | Best for                                       | Notes                                                                                       |
-| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| PDF    | Document archiving and multi-page scans        | Documents can fit their content or use uniform A4 pages; ID cards use one enlarged A4 sheet |
-| JPG    | A single page or a combined two-sided ID image | Broad compatibility with lossy compression                                                  |
-| PNG    | A single page or a combined two-sided ID image | Lossless, but generally larger                                                              |
-| ZIP    | Multi-page passport or document projects       | Renders every page as a separate JPG and packages them together                             |
+| Format | Best for                                       | Notes                                                                                                         |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| PDF    | Document archiving and multi-page scans        | Documents can fit their content or use uniform A4 pages; ID cards use one A4 sheet at enlarged or actual size |
+| JPG    | A single page or a combined two-sided ID image | Broad compatibility with lossy compression                                                                    |
+| PNG    | A single page or a combined two-sided ID image | Lossless, but generally larger                                                                                |
+| ZIP    | Multi-page passport or document projects       | Renders every page as a separate JPG and packages them together                                               |
 
 ## Workflow
 

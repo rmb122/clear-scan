@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import type { ExportFormat, PdfLayout } from '@/lib/exporters'
+import type { IdCardSize } from '@/lib/id-card-layout'
 import type { ScanPage, ScanProject } from '@/lib/types'
 import { downloadBlob, cn } from '@/lib/utils'
 import { messages } from '@/lib/i18n'
@@ -19,14 +20,16 @@ import { useLocale } from '@/hooks/use-locale'
 
 export function ExportDialog({ project, pages }: { project: ScanProject; pages: ScanPage[] }) {
   useLocale()
+  const isIdCard = project.mode === 'id-card'
   const [open, setOpen] = useState(false)
   const [format, setFormat] = useState<ExportFormat>('pdf')
-  const [layout, setLayout] = useState<PdfLayout>(project.mode === 'id-card' ? 'a4' : 'content')
+  const [layout, setLayout] = useState<PdfLayout>(isIdCard ? 'a4' : 'content')
+  const [idCardSize, setIdCardSize] = useState<IdCardSize>('original')
   const [progress, setProgress] = useState(0)
   const [label, setLabel] = useState(messages.preparingExport)
   const [exporting, setExporting] = useState(false)
   const idComplete =
-    project.mode !== 'id-card' ||
+    !isIdCard ||
     (pages.some((page) => page.role === 'front') && pages.some((page) => page.role === 'back'))
   const allCropsConfirmed = pages.length > 0 && pages.every((page) => page.cropConfirmed)
   const formats: Array<{
@@ -39,49 +42,44 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
     {
       value: 'pdf',
       label: messages.pdfDocument,
-      description:
-        project.mode === 'id-card' ? messages.a4Combined : messages.pageCount(pages.length),
+      description: isIdCard ? messages.a4Combined : messages.pageCount(pages.length),
       icon: FileText,
     },
     {
       value: 'jpg',
       label: messages.jpgImage,
       description:
-        pages.length > 1 && project.mode !== 'id-card'
-          ? messages.singlePageOnly
-          : messages.bestCompatibility,
+        pages.length > 1 && !isIdCard ? messages.singlePageOnly : messages.bestCompatibility,
       icon: FileImage,
-      hidden: pages.length > 1 && project.mode !== 'id-card',
+      hidden: pages.length > 1 && !isIdCard,
     },
     {
       value: 'png',
       label: messages.pngImage,
-      description:
-        pages.length > 1 && project.mode !== 'id-card'
-          ? messages.singlePageOnly
-          : messages.lossless,
+      description: pages.length > 1 && !isIdCard ? messages.singlePageOnly : messages.lossless,
       icon: FileImage,
-      hidden: pages.length > 1 && project.mode !== 'id-card',
+      hidden: pages.length > 1 && !isIdCard,
     },
     {
       value: 'zip',
       label: messages.zipImages,
       description: messages.jpgCount(pages.length),
       icon: FileArchive,
-      hidden: project.mode === 'id-card',
+      hidden: isIdCard,
     },
   ]
 
   useEffect(() => {
     setFormat('pdf')
-    setLayout(project.mode === 'id-card' ? 'a4' : 'content')
-  }, [project.id, project.mode])
+    setLayout(isIdCard ? 'a4' : 'content')
+    setIdCardSize('original')
+  }, [project.id, isIdCard])
 
   useEffect(() => {
-    if (project.mode !== 'id-card' && pages.length > 1 && (format === 'jpg' || format === 'png')) {
+    if (!isIdCard && pages.length > 1 && (format === 'jpg' || format === 'png')) {
       setFormat('pdf')
     }
-  }, [format, pages.length, project.mode])
+  }, [format, pages.length, isIdCard])
 
   const runExport = async () => {
     setExporting(true)
@@ -89,10 +87,17 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
     setProgress(1)
     try {
       const { exportProject } = await import('@/lib/exporters')
-      const result = await exportProject(project, pages, format, layout, (value, nextLabel) => {
-        setProgress(value)
-        setLabel(nextLabel)
-      })
+      const result = await exportProject(
+        project,
+        pages,
+        format,
+        layout,
+        idCardSize,
+        (value, nextLabel) => {
+          setProgress(value)
+          setLabel(nextLabel)
+        },
+      )
       downloadBlob(result.blob, result.fileName)
       toast.success(messages.exportComplete, { description: result.fileName })
       setOpen(false)
@@ -151,7 +156,33 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
               </button>
             ))}
         </div>
-        {format === 'pdf' && project.mode !== 'id-card' && (
+        {isIdCard && (
+          <fieldset disabled={exporting}>
+            <legend className="mb-2 text-xs font-bold">{messages.idCardExportSize}</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={idCardSize === 'original' ? 'secondary' : 'outline'}
+                aria-pressed={idCardSize === 'original'}
+                onClick={() => setIdCardSize('original')}
+              >
+                {messages.idCardOriginal}
+              </Button>
+              <Button
+                variant={idCardSize === 'enlarged' ? 'secondary' : 'outline'}
+                aria-pressed={idCardSize === 'enlarged'}
+                onClick={() => setIdCardSize('enlarged')}
+              >
+                {messages.idCardEnlarged}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {idCardSize === 'original'
+                ? messages.idCardOriginalHint
+                : messages.idCardEnlargedHint}
+            </p>
+          </fieldset>
+        )}
+        {format === 'pdf' && !isIdCard && (
           <div>
             <p className="mb-2 text-xs font-bold">{messages.pdfPageSize}</p>
             <div className="grid grid-cols-2 rounded-xl bg-muted p-1">
