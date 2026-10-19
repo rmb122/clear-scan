@@ -15,16 +15,14 @@ export function drawWatermark(
   context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   content: ContentBounds,
   settings?: WatermarkSettings,
+  contentRegions: ContentBounds[] = [content],
 ) {
   if (!hasWatermark(settings)) return
 
   const shortEdge = Math.min(content.width, content.height)
-  const padding = shortEdge * 0.1
-  const left = Math.max(0, content.x - padding)
-  const top = Math.max(0, content.y - padding)
-  const right = Math.min(context.canvas.width, content.x + content.width + padding)
-  const bottom = Math.min(context.canvas.height, content.y + content.height + padding)
-  if (shortEdge <= 0 || right <= left || bottom <= top) return
+  if (shortEdge <= 0) return
+  const centerX = content.x + content.width / 2
+  const centerY = content.y + content.height / 2
 
   const scale = shortEdge / 1000
   const fontSize = settings.fontSize * scale
@@ -34,9 +32,27 @@ export function drawWatermark(
   context.save()
   try {
     context.beginPath()
-    context.rect(left, top, right - left, bottom - top)
+    let radius = 0
+    for (const region of contentRegions) {
+      const padding = Math.min(region.width, region.height) * 0.1
+      const left = Math.max(0, region.x - padding)
+      const top = Math.max(0, region.y - padding)
+      const right = Math.min(context.canvas.width, region.x + region.width + padding)
+      const bottom = Math.min(context.canvas.height, region.y + region.height + padding)
+      if (right <= left || bottom <= top) continue
+      context.rect(left, top, right - left, bottom - top)
+      radius = Math.max(
+        radius,
+        Math.hypot(
+          Math.max(Math.abs(left - centerX), Math.abs(right - centerX)),
+          Math.max(Math.abs(top - centerY), Math.abs(bottom - centerY)),
+        ),
+      )
+    }
+    if (radius === 0) return
+    // Union the regions in one clip so overlaps receive just one layer of text.
     context.clip()
-    context.translate(content.x + content.width / 2, content.y + content.height / 2)
+    context.translate(centerX, centerY)
     context.rotate((settings.angle * Math.PI) / 180)
     context.font = `${fontSize}px "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif`
     context.textAlign = 'center'
@@ -47,9 +63,7 @@ export function drawWatermark(
     const textWidth = context.measureText(text).width
     const stepX = textWidth + spacing
     const stepY = fontSize + spacing
-    // The expanded rectangle fits inside this radius at every rotation.
-    // Anchor the grid to the content, so A4 whitespace does not move the text.
-    const radius = Math.hypot(content.width / 2 + padding, content.height / 2 + padding)
+    // Cover all clipped regions with one grid anchored to the reference content.
     const columns = Math.ceil((radius + textWidth / 2) / stepX)
     const rows = Math.ceil((radius + fontSize) / stepY)
     for (let row = -rows; row <= rows; row += 1) {

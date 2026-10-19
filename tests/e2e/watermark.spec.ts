@@ -187,6 +187,70 @@ test('tiled text scales with the content and stays within the expanded bounds', 
   expect(result.alphaDifference).toBeLessThan(1)
 })
 
+test('enlarged ID cards keep a single watermark opacity between the two sides', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const exporterPath = '/src/lib/exporters.ts'
+    const typesPath = '/src/lib/types.ts'
+    const layoutPath = '/src/lib/id-card-layout.ts'
+    const fixturePath = '/tests/support/scan-fixtures.ts'
+    const helperPath = '/tests/support/watermark.ts'
+    const { exportProject } = await import(exporterPath)
+    const { DEFAULT_WATERMARK } = await import(typesPath)
+    const { getIdCardSheetLayout } = await import(layoutPath)
+    const { makeProject } = await import(fixturePath)
+    const { makeWatermarkPage } = await import(helperPath)
+    const front = await makeWatermarkPage({ role: 'front' })
+    const back = { ...front, id: 'page-2', role: 'back', order: 1 }
+    const output = await exportProject(
+      makeProject({
+        mode: 'id-card',
+        watermark: {
+          ...DEFAULT_WATERMARK,
+          enabled: true,
+          text: '仅供审核使用',
+          color: '#ff0000',
+          opacity: 50,
+          fontSize: 96,
+          spacing: 20,
+        },
+      }),
+      [front, back],
+      'png',
+      'a4',
+      'enlarged',
+    )
+    const bitmap = await createImageBitmap(output.blob)
+    try {
+      const layout = getIdCardSheetLayout(bitmap.width, bitmap.height, 'enlarged')
+      const gapTop = Math.ceil(layout.front.y + layout.front.height) + 1
+      const gapBottom = Math.floor(layout.back.y) - 1
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = gapBottom - gapTop
+      const context = canvas.getContext('2d')!
+      context.drawImage(bitmap, 0, -gapTop)
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+      let markedPixels = 0
+      let minGreen = 255
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (pixels[index] > pixels[index + 1] + 40) {
+          markedPixels += 1
+          minGreen = Math.min(minGreen, pixels[index + 1])
+        }
+      }
+      return { markedPixels, minGreen }
+    } finally {
+      bitmap.close()
+    }
+  })
+  expect(result.markedPixels).toBeGreaterThan(100)
+  // A single 50% red layer on white keeps green at 127 or above.
+  expect(result.minGreen).toBeGreaterThanOrEqual(127)
+})
+
 test('A4 PDFs contain only watermarked scans with marked whitespace and ZIP marks every page', async ({
   page,
 }) => {

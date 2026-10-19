@@ -54,44 +54,46 @@ export function ScanPageHeader({
         <Button variant="ghost" size="icon" onClick={onBack} aria-label={messages.backHome}>
           <ArrowLeft />
         </Button>
-        <div className="col-span-3 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap sm:col-span-1 sm:col-start-2 sm:row-start-1">
-          <Badge variant="secondary">{modeLabels[mode]}</Badge>
-          <span className="text-[10px] font-semibold text-muted-foreground">
-            {messages.pageCount(pages.length)}
-          </span>
-        </div>
-        {project ? (
-          <div className="group col-span-3 row-start-3 w-fit min-w-0 max-w-full sm:col-span-1 sm:col-start-3 sm:row-start-1">
-            <label
-              className="flex max-w-sm cursor-text items-center gap-2 border-b border-transparent py-1 transition hover:border-border focus-within:border-primary"
-              title={messages.renameHint}
-            >
-              <Pencil
-                aria-hidden="true"
-                className="size-3.5 shrink-0 text-muted-foreground transition group-hover:text-primary group-focus-within:text-primary"
-              />
-              <span className="relative min-w-0 text-sm font-bold">
-                <span
-                  aria-hidden="true"
-                  className="invisible block overflow-hidden pr-4 whitespace-pre"
-                >
-                  {project.name || messages.untitled}
-                </span>
-                <input
-                  value={project.name}
-                  onChange={(event) => onRename(event.target.value)}
-                  className="absolute inset-0 size-full min-w-0 truncate bg-transparent pr-4 outline-none"
-                  aria-label={messages.projectName}
-                  placeholder={messages.untitled}
-                />
-              </span>
-            </label>
+        <div className="col-span-3 row-start-2 flex min-w-0 items-center justify-between gap-3 sm:contents">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap sm:col-start-2 sm:row-start-1">
+            <Badge variant="secondary">{modeLabels[mode]}</Badge>
+            <span className="text-[10px] font-semibold text-muted-foreground">
+              {messages.pageCount(pages.length)}
+            </span>
           </div>
-        ) : (
-          <h1 className="col-span-3 row-start-3 text-sm font-bold sm:col-span-1 sm:col-start-3 sm:row-start-1">
-            {messages.newScan(modeLabels[mode])}
-          </h1>
-        )}
+          {project ? (
+            <div className="group w-fit min-w-0 max-w-full sm:col-start-3 sm:row-start-1">
+              <label
+                className="flex max-w-sm cursor-text items-center gap-2 border-b border-transparent py-1 transition hover:border-border focus-within:border-primary"
+                title={messages.renameHint}
+              >
+                <Pencil
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-muted-foreground transition group-hover:text-primary group-focus-within:text-primary"
+                />
+                <span className="relative min-w-0 text-sm font-bold">
+                  <span
+                    aria-hidden="true"
+                    className="invisible block overflow-hidden pr-4 whitespace-pre"
+                  >
+                    {project.name || messages.untitled}
+                  </span>
+                  <input
+                    value={project.name}
+                    onChange={(event) => onRename(event.target.value)}
+                    className="absolute inset-0 size-full min-w-0 truncate bg-transparent pr-4 outline-none"
+                    aria-label={messages.projectName}
+                    placeholder={messages.untitled}
+                  />
+                </span>
+              </label>
+            </div>
+          ) : (
+            <h1 className="min-w-0 truncate text-sm font-bold sm:col-start-3 sm:row-start-1">
+              {messages.newScan(modeLabels[mode])}
+            </h1>
+          )}
+        </div>
         <div className="col-span-2 col-start-2 row-start-1 flex items-center justify-self-end gap-2 sm:col-span-1 sm:col-start-4">
           {watermarkControl}
           {project && <ExportDialog project={project} pages={pages} />}

@@ -90,8 +90,7 @@ async function composeIdCard(
   context.drawImage(backBitmap, layout.back.x, layout.back.y, layout.back.width, layout.back.height)
   frontBitmap.close()
   backBitmap.close()
-  drawWatermark(context, layout.front, watermark)
-  drawWatermark(context, layout.back, watermark)
+  drawWatermark(context, layout.front, watermark, [layout.front, layout.back])
 
   onProgress?.(85, messages.composingA4)
   const blob = await canvasToBlob(canvas, mimeType)

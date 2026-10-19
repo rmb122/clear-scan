@@ -127,13 +127,14 @@ describe('ID card image export', () => {
       expect(encode).toHaveBeenCalledWith(expect.any(Function), mimeType, 0.94)
       const canvas = encode.mock.instances[0] as HTMLCanvasElement
       expect(drawCard).toHaveBeenCalledTimes(2)
-      expect(drawWatermark).toHaveBeenCalledTimes(2)
-      for (const [index, [, x, y, width, height]] of drawCard.mock.calls.entries()) {
-        expect(drawWatermark.mock.calls[index].slice(1)).toEqual([
-          { x, y, width, height },
-          watermark,
-        ])
-      }
+      expect(drawWatermark).toHaveBeenCalledTimes(1)
+      const regions = drawCard.mock.calls.map(([, x, y, width, height]) => ({
+        x,
+        y,
+        width,
+        height,
+      }))
+      expect(drawWatermark.mock.calls[0].slice(1)).toEqual([regions[0], watermark, regions])
       for (const [, , , width] of drawCard.mock.calls) {
         expect(width / canvas.width).toBeCloseTo(size === 'original' ? 85.6 / 210 : 0.8, 6)
       }
@@ -182,7 +183,7 @@ describe('ID card PDF export', () => {
     const canvas = encode.mock.instances[0] as HTMLCanvasElement
     const placement = drawSheet.mock.calls[0][1]!
     expect(drawCard).toHaveBeenCalledTimes(2)
-    expect(drawWatermark).toHaveBeenCalledTimes(2)
+    expect(drawWatermark).toHaveBeenCalledTimes(1)
     expect(drawSheet).toHaveBeenCalledTimes(1)
     for (const [, x, y, width, height] of drawCard.mock.calls) {
       const widthMm = ((width / canvas.width) * placement.width! * 25.4) / 72
