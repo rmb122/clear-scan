@@ -16,7 +16,7 @@ import { DEFAULT_WATERMARK, type WatermarkSettings } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export function WatermarkDialog({
-  settings = DEFAULT_WATERMARK,
+  settings = { ...DEFAULT_WATERMARK, text: messages.watermarkDefaultText },
   onChange,
   disabled,
   previewAvailable,

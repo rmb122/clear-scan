@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   RotateCcw,
   RotateCw,
@@ -10,6 +9,7 @@ import {
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { SelectionButton } from '@/components/ui/selection-button'
 import { Slider } from '@/components/ui/slider'
 import {
   DEFAULT_ADJUSTMENTS,
@@ -221,7 +221,7 @@ export function FilterPanel({
             {activePreset === 'custom' ? messages.customEffects : messages.recommendedPreset}
           </Badge>
         </div>
-        <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-muted/60 p-1">
+        <div className="grid grid-cols-2 gap-1.5">
           {[
             {
               value: 'original' as const,
@@ -232,23 +232,14 @@ export function FilterPanel({
               label: messages.smartPreset,
             },
           ].map((preset) => (
-            <Button
+            <SelectionButton
               key={preset.value}
-              type="button"
-              variant="ghost"
               aria-label={preset.label}
-              aria-pressed={activePreset === preset.value}
+              selected={activePreset === preset.value}
               onClick={() => onPresetApply(preset.value)}
-              className={cn(
-                'h-10 gap-1.5 rounded-lg px-3 text-xs',
-                activePreset === preset.value
-                  ? 'bg-secondary text-primary shadow-sm hover:bg-secondary hover:text-primary'
-                  : 'text-muted-foreground hover:bg-card',
-              )}
             >
-              {activePreset === preset.value && <Check className="size-3.5 text-primary" />}
               {preset.label}
-            </Button>
+            </SelectionButton>
           ))}
         </div>
       </section>
@@ -265,31 +256,19 @@ export function FilterPanel({
             <fieldset key={group.key} className="rounded-xl border border-border/50 p-3">
               <legend className="px-1 text-xs font-bold">{group.label}</legend>
               <div className="mt-1 grid grid-cols-2 gap-1.5">
-                {group.options.map((option) => {
-                  const selected = effects[group.key] === option.value
-                  return (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      variant="ghost"
-                      aria-label={option.label}
-                      aria-pressed={selected}
-                      onClick={() => onEffectChange(group.key, option.value)}
-                      className={cn(
-                        'h-auto min-h-10 min-w-0 rounded-lg border px-2 py-2 text-xs whitespace-normal',
-                        group.key === 'shadow' && option.value === 'none' && 'col-span-2',
-                        selected
-                          ? 'border-primary/20 bg-secondary text-primary hover:bg-secondary hover:text-primary'
-                          : 'border-transparent text-muted-foreground hover:bg-muted',
-                      )}
-                    >
-                      <span className="inline-flex min-w-0 items-center justify-center gap-1.5">
-                        {selected && <Check className="size-3.5 shrink-0" />}
-                        <span>{option.label}</span>
-                      </span>
-                    </Button>
-                  )
-                })}
+                {group.options.map((option) => (
+                  <SelectionButton
+                    key={option.value}
+                    aria-label={option.label}
+                    selected={effects[group.key] === option.value}
+                    onClick={() => onEffectChange(group.key, option.value)}
+                    className={cn(
+                      group.key === 'shadow' && option.value === 'none' && 'col-span-2',
+                    )}
+                  >
+                    {option.label}
+                  </SelectionButton>
+                ))}
               </div>
             </fieldset>
           ))}

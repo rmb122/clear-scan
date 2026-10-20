@@ -127,19 +127,20 @@ export function HistoryPage() {
             aria-label={messages.filterScanType}
           >
             {filters.map((item) => (
-              <button
+              <Button
                 key={item.value}
                 type="button"
+                variant={filter === item.value ? 'secondary' : 'outline'}
                 aria-pressed={filter === item.value}
                 onClick={() => setFilter(item.value)}
                 className={cn(
-                  'flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-muted-foreground transition hover:bg-muted',
-                  filter === item.value && 'bg-secondary text-secondary-foreground',
+                  'h-9 gap-1.5 px-3 text-xs',
+                  filter !== item.value && 'bg-muted text-foreground',
                 )}
               >
                 {item.icon && <item.icon className="size-3.5" />}
                 {item.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

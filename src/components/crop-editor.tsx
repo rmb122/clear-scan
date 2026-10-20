@@ -8,7 +8,7 @@ import {
 } from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { CornerSource, NormalizedQuad } from '@/lib/types'
-import { clamp } from '@/lib/geometry'
+import { clamp, constrainCropCorner } from '@/lib/geometry'
 import { cn } from '@/lib/utils'
 import { messages } from '@/lib/i18n'
 import { useLocale } from '@/hooks/use-locale'
@@ -148,7 +148,7 @@ export function CropEditor({
       if (!drag || drag.pointerId !== event.pointerId) return
       const rect = containerRef.current?.getBoundingClientRect()
       if (!rect || rect.width <= 0 || rect.height <= 0) return
-      const point = {
+      const target = {
         x: clamp(
           (event.clientX - rect.left - drag.handleOffset.x - drag.grabOffset.x) / rect.width,
           0.005,
@@ -161,6 +161,14 @@ export function CropEditor({
         ),
       }
       const current = pendingPointRef.current ?? draftCornersRef.current[drag.index]
+      const next = [...draftCornersRef.current] as NormalizedQuad
+      next[drag.index] = current
+      const point = constrainCropCorner(next, drag.index, target)
+      // Consume overshoot at either boundary so reversing the pointer moves the corner immediately.
+      drag.grabOffset = {
+        x: event.clientX - rect.left - drag.handleOffset.x - point.x * rect.width,
+        y: event.clientY - rect.top - drag.handleOffset.y - point.y * rect.height,
+      }
       if (current.x === point.x && current.y === point.y) return
       pendingPointRef.current = point
       drag.changed = true

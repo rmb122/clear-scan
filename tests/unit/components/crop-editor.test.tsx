@@ -76,12 +76,116 @@ describe('CropEditor', () => {
     expect(Number.parseFloat(handle.style.top)).toBeCloseTo(45.0912, 3)
     expect(onChange).not.toHaveBeenCalled()
 
-    fireEvent.pointerMove(handle, { pointerId: 7, clientX: 900, clientY: 490 })
+    fireEvent.pointerMove(handle, { pointerId: 7, clientX: 400, clientY: 220 })
     fireEvent.pointerUp(handle, { pointerId: 7 })
     expect(screen.queryByTestId('crop-magnifier')).not.toBeInTheDocument()
     expect(onChange).toHaveBeenCalledTimes(1)
-    expect(onChange.mock.calls[0][0][0].x).toBeCloseTo(0.925456, 5)
-    expect(onChange.mock.calls[0][0][0].y).toBe(0.995)
+    expect(onChange.mock.calls[0][0][0].x).toBeCloseTo(0.425456, 5)
+    expect(onChange.mock.calls[0][0][0].y).toBeCloseTo(0.490912, 5)
+  })
+
+  it('prevents the right corners from being dragged onto or past each other', () => {
+    const { onChange } = renderEditor(DEFAULT_QUAD)
+    const topRight = screen.getByRole('button', { name: '拖动第 2 个裁剪点' })
+    const bottomRight = screen.getByRole('button', { name: '拖动第 3 个裁剪点' })
+
+    fireEvent.pointerDown(topRight, {
+      pointerId: 1,
+      clientX: 960 + handleOffset,
+      clientY: 20 - handleOffset,
+    })
+    fireEvent.pointerMove(topRight, {
+      pointerId: 1,
+      clientX: 960 + handleOffset,
+      clientY: 480 - handleOffset,
+    })
+    fireEvent.pointerUp(topRight, { pointerId: 1 })
+
+    fireEvent.pointerDown(bottomRight, {
+      pointerId: 2,
+      clientX: 960 + handleOffset,
+      clientY: 480 + handleOffset,
+    })
+    fireEvent.pointerMove(bottomRight, {
+      pointerId: 2,
+      clientX: 960 + handleOffset,
+      clientY: 10 + handleOffset,
+    })
+    fireEvent.pointerUp(bottomRight, { pointerId: 2 })
+
+    expect(Number.parseFloat(topRight.style.top)).toBeCloseTo(96, 3)
+    expect(Number.parseFloat(topRight.style.top)).toBeLessThan(
+      Number.parseFloat(bottomRight.style.top),
+    )
+    expect(onChange).toHaveBeenCalled()
+    for (const [corners] of onChange.mock.calls) {
+      expect(corners[1].y).toBeLessThan(corners[2].y)
+    }
+  })
+
+  it('constrains pending moves and responds immediately when reversing after overshoot', () => {
+    const { onChange } = renderEditor(DEFAULT_QUAD)
+    const handle = screen.getByRole('button', { name: '拖动第 1 个裁剪点' })
+    fireEvent.pointerDown(handle, {
+      pointerId: 1,
+      clientX: 40 - handleOffset,
+      clientY: 20 - handleOffset,
+    })
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: 200 - handleOffset,
+      clientY: 100 - handleOffset,
+    })
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: 800 - handleOffset,
+      clientY: 400 - handleOffset,
+    })
+    act(() => frames[0](16))
+    expect(Number.parseFloat(handle.style.left)).toBeCloseTo(50, 3)
+    expect(Number.parseFloat(handle.style.top)).toBeCloseTo(50, 3)
+
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: 900 - handleOffset,
+      clientY: 450 - handleOffset,
+    })
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: 880 - handleOffset,
+      clientY: 440 - handleOffset,
+    })
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange.mock.calls[0][0][0].x).toBeCloseTo(0.48, 5)
+    expect(onChange.mock.calls[0][0][0].y).toBeCloseTo(0.48, 5)
+  })
+
+  it('moves inward immediately after the pointer overshoots the image boundary', () => {
+    const { onChange } = renderEditor(DEFAULT_QUAD)
+    const handle = screen.getByRole('button', { name: '拖动第 1 个裁剪点' })
+    fireEvent.pointerDown(handle, {
+      pointerId: 1,
+      clientX: 40 - handleOffset,
+      clientY: 20 - handleOffset,
+    })
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: -200 - handleOffset,
+      clientY: -100 - handleOffset,
+    })
+    act(() => frames[0](16))
+    expect(handle).toHaveStyle({ left: '0.5%', top: '0.5%' })
+
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: -190 - handleOffset,
+      clientY: -95 - handleOffset,
+    })
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange.mock.calls[0][0][0].x).toBeCloseTo(0.015, 5)
+    expect(onChange.mock.calls[0][0][0].y).toBeCloseTo(0.015, 5)
   })
 
   it('clamps the final point and commits an interrupted drag once', () => {

@@ -16,6 +16,23 @@ const centered: NormalizedQuad = [
 ]
 
 describe('document detection scoring', () => {
+  it('rejects a concave candidate even when its edges and contrast are strong', () => {
+    const candidate = scoreDetectionCandidate({
+      corners: [
+        { x: 0.1, y: 0.1 },
+        { x: 0.9, y: 0.1 },
+        { x: 0.4, y: 0.3 },
+        { x: 0.1, y: 0.9 },
+      ],
+      source: 'canny',
+      width: 1000,
+      height: 1000,
+      edgeSupport: 1,
+      contrast: 1,
+    })
+    expect(candidate.score).toBe(0)
+  })
+
   it('scores mode ratios in source pixels instead of normalized coordinates', () => {
     const candidate = scoreDetectionCandidate({
       corners: centered,

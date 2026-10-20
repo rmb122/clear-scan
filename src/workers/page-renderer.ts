@@ -1,5 +1,5 @@
 import type { CV, Mat } from '@techstark/opencv-js'
-import { distance, orderPoints } from '@/lib/geometry'
+import { distance, isValidCropQuad } from '@/lib/geometry'
 import type { RenderOptions, ScanPage } from '@/lib/types'
 import { drawWatermark } from '@/lib/watermark'
 import { createLightingResult, processEffects, processEffectsFromLighting } from './image-enhancer'
@@ -85,7 +85,7 @@ function cacheLighting(lightingKey: string, lighting: Mat) {
 async function preparePageBase(cv: CV, page: ScanPage, maxEdge: number) {
   const { imageData, sourceWidth, sourceHeight } = await blobToImageData(page.source, maxEdge * 1.4)
   const source = cv.matFromImageData(imageData)
-  const sourcePoints = orderPoints(page.corners).map((point) => ({
+  const sourcePoints = page.corners.map((point) => ({
     x: point.x * sourceWidth,
     y: point.y * sourceHeight,
   }))
@@ -149,6 +149,8 @@ export async function renderPage(
   cacheIntermediate = false,
   onProgress?: (progress: number, label: string) => void,
 ) {
+  if (!isValidCropQuad(page.corners)) throw new Error(messages.invalidCropCorners)
+
   const { maxEdge, mimeType, quality = 0.92, watermark } = options
   const baseKey = createBaseKey(page, maxEdge)
   let base = cacheIntermediate && previewCache?.baseKey === baseKey ? previewCache.base : undefined

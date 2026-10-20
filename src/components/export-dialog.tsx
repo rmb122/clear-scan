@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { SelectionButton } from '@/components/ui/selection-button'
 import type { ExportFormat, PdfLayout } from '@/lib/exporters'
 import type { IdCardSize } from '@/lib/id-card-layout'
 import type { ScanPage, ScanProject } from '@/lib/types'
@@ -160,21 +161,19 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
         {isIdCard && (
           <fieldset disabled={exporting}>
             <legend className="mb-2 text-xs font-bold">{messages.idCardExportSize}</legend>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={idCardSize === 'original' ? 'secondary' : 'outline'}
-                aria-pressed={idCardSize === 'original'}
+            <div className="grid grid-cols-2 gap-1.5">
+              <SelectionButton
+                selected={idCardSize === 'original'}
                 onClick={() => setIdCardSize('original')}
               >
                 {messages.idCardOriginal}
-              </Button>
-              <Button
-                variant={idCardSize === 'enlarged' ? 'secondary' : 'outline'}
-                aria-pressed={idCardSize === 'enlarged'}
+              </SelectionButton>
+              <SelectionButton
+                selected={idCardSize === 'enlarged'}
                 onClick={() => setIdCardSize('enlarged')}
               >
                 {messages.idCardEnlarged}
-              </Button>
+              </SelectionButton>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               {idCardSize === 'original'
@@ -186,29 +185,13 @@ export function ExportDialog({ project, pages }: { project: ScanProject; pages: 
         {format === 'pdf' && !isIdCard && (
           <div>
             <p className="mb-2 text-xs font-bold">{messages.pdfPageSize}</p>
-            <div className="grid grid-cols-2 rounded-xl bg-muted p-1">
-              <button
-                type="button"
-                aria-pressed={layout === 'content'}
-                onClick={() => setLayout('content')}
-                className={cn(
-                  'h-9 rounded-lg text-xs font-semibold',
-                  layout === 'content' && 'bg-background shadow-sm',
-                )}
-              >
+            <div className="grid grid-cols-2 gap-1.5">
+              <SelectionButton selected={layout === 'content'} onClick={() => setLayout('content')}>
                 {messages.fitContent}
-              </button>
-              <button
-                type="button"
-                aria-pressed={layout === 'a4'}
-                onClick={() => setLayout('a4')}
-                className={cn(
-                  'h-9 rounded-lg text-xs font-semibold',
-                  layout === 'a4' && 'bg-background shadow-sm',
-                )}
-              >
+              </SelectionButton>
+              <SelectionButton selected={layout === 'a4'} onClick={() => setLayout('a4')}>
                 {messages.uniformA4}
-              </button>
+              </SelectionButton>
             </div>
           </div>
         )}

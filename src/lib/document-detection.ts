@@ -1,4 +1,4 @@
-import { clamp, distance, orderPoints } from './geometry'
+import { clamp, distance, isValidCropQuad, orderPoints } from './geometry'
 import type { NormalizedQuad, Point } from './types'
 
 export const DETECTION_CONFIDENCE_THRESHOLD = 0.62
@@ -83,6 +83,7 @@ export function scoreDetectionCandidate(input: CandidateInput): DetectionCandida
   const sides = pixels.map((point, index) => distance(point, pixels[(index + 1) % 4]))
   const angles = cornerAngles(pixels)
   const invalidGeometry =
+    !isValidCropQuad(corners) ||
     area < 0.06 ||
     area > 0.985 ||
     Math.min(...sides) < diagonal * 0.055 ||

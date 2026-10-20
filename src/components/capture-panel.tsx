@@ -5,6 +5,7 @@ import { CameraDialog } from './camera-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { SelectionButton } from '@/components/ui/selection-button'
 import type { PageRole, PassportLayout, ScanMode } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { messages } from '@/lib/i18n'
@@ -73,20 +74,16 @@ export function CapturePanel({
       </p>
 
       {mode === 'passport' && (
-        <div className="mt-6 grid w-full max-w-sm grid-cols-2 rounded-xl bg-muted p-1">
+        <div className="mt-6 grid w-full max-w-sm grid-cols-2 gap-1.5">
           {(['data-page', 'spread'] as const).map((layout) => (
-            <button
+            <SelectionButton
               key={layout}
-              type="button"
+              selected={passportLayout === layout}
               disabled={busy}
               onClick={() => onPassportLayoutChange(layout)}
-              className={cn(
-                'h-9 rounded-lg text-xs font-semibold text-muted-foreground transition',
-                passportLayout === layout && 'bg-background text-foreground shadow-sm',
-              )}
             >
               {layout === 'data-page' ? messages.passportDataPage : messages.passportSpread}
-            </button>
+            </SelectionButton>
           ))}
         </div>
       )}

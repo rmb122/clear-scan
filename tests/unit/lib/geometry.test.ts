@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_QUAD, fitWithin, orderPoints, quadAspectRatio } from '@/lib/geometry'
+import {
+  DEFAULT_QUAD,
+  fitWithin,
+  isValidCropQuad,
+  orderPoints,
+  quadAspectRatio,
+} from '@/lib/geometry'
+import type { NormalizedQuad } from '@/lib/types'
 
 describe('document geometry', () => {
   it('orders arbitrary corner points clockwise from top-left', () => {
@@ -19,6 +26,42 @@ describe('document geometry', () => {
 
   it('falls back to a safe inset for invalid quads', () => {
     expect(orderPoints([{ x: 0, y: 0 }])).toEqual(DEFAULT_QUAD)
+  })
+
+  it('accepts a tilted perspective crop without requiring axis-aligned corners', () => {
+    expect(
+      isValidCropQuad([
+        { x: 0.45, y: 0.05 },
+        { x: 0.95, y: 0.6 },
+        { x: 0.55, y: 0.95 },
+        { x: 0.05, y: 0.4 },
+      ]),
+    ).toBe(true)
+  })
+
+  it.each<{ scenario: string; corners: NormalizedQuad }>([
+    {
+      scenario: 'swapped right corners',
+      corners: [DEFAULT_QUAD[0], DEFAULT_QUAD[2], DEFAULT_QUAD[1], DEFAULT_QUAD[3]],
+    },
+    {
+      scenario: 'an inward fold',
+      corners: [{ x: 0.6, y: 0.6 }, DEFAULT_QUAD[1], DEFAULT_QUAD[2], DEFAULT_QUAD[3]],
+    },
+    {
+      scenario: 'overlapping corners',
+      corners: [DEFAULT_QUAD[0], DEFAULT_QUAD[2], DEFAULT_QUAD[2], DEFAULT_QUAD[3]],
+    },
+    {
+      scenario: 'three collinear corners',
+      corners: [DEFAULT_QUAD[0], { x: 0.5, y: 0.5 }, DEFAULT_QUAD[2], DEFAULT_QUAD[3]],
+    },
+    {
+      scenario: 'reversed corner order',
+      corners: [DEFAULT_QUAD[0], DEFAULT_QUAD[3], DEFAULT_QUAD[2], DEFAULT_QUAD[1]],
+    },
+  ])('rejects $scenario without reordering the crop', ({ corners }) => {
+    expect(isValidCropQuad(corners)).toBe(false)
   })
 
   it('calculates crop aspect ratio using source dimensions', () => {

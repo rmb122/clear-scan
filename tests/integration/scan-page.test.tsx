@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as repository from '@/lib/db'
 import { scannerClient } from '@/lib/scanner-client'
+import { DEFAULT_QUAD } from '@/lib/geometry'
+import { messages } from '@/lib/i18n'
 import { formatDate } from '@/lib/utils'
 import { ScannerNavigationContext } from '@/hooks/use-scanner-navigation'
 import { makePage, makeProject } from '../support/scan-fixtures'
@@ -64,13 +66,39 @@ afterEach(async () => {
 })
 
 describe('scan page persistence', () => {
+  it('keeps an invalid saved crop unconfirmed and asks the user to adjust it', async () => {
+    await repository.putPage(
+      makePage({
+        cropConfirmed: false,
+        corners: [DEFAULT_QUAD[0], DEFAULT_QUAD[2], DEFAULT_QUAD[1], DEFAULT_QUAD[3]],
+      }),
+    )
+    const errorToast = vi.spyOn(toast, 'error')
+    renderScanner()
+    const confirm = await screen.findByRole('button', { name: '确认裁剪' })
+    await waitFor(() => expect(confirm).toBeEnabled())
+    fireEvent.click(confirm)
+
+    expect(errorToast).toHaveBeenCalledWith(messages.invalidCropCorners)
+    expect(screen.getByRole('heading', { name: '确认四个角点' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '导出' })).toBeDisabled()
+    expect((await repository.getProjectPages('project-1'))[0].cropConfirmed).toBe(false)
+  })
+
   it('shares watermark settings across existing and new pages and restores them on reopen', async () => {
     await repository.putPage(makePage({ id: 'page-2', order: 1 }))
     await repository.db.projects.put(makeProject({ id: 'project-2', name: '另一个项目' }))
     await repository.putPage(makePage({ id: 'other-page', projectId: 'project-2' }))
     const { unmount } = renderScanner()
     fireEvent.click(await screen.findByRole('button', { name: '水印' }))
+    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('仅供办理业务使用')
     fireEvent.click(screen.getByRole('switch', { name: '启用水印' }))
+    await waitFor(async () => {
+      expect((await repository.db.projects.get('project-1'))?.watermark).toMatchObject({
+        enabled: true,
+        text: '仅供办理业务使用',
+      })
+    })
     fireEvent.change(screen.getByRole('textbox', { name: '水印文字' }), {
       target: { value: '仅供审核使用' },
     })
@@ -94,7 +122,7 @@ describe('scan page persistence', () => {
     fireEvent.click(screen.getByRole('link', { name: '另一个项目' }))
     await screen.findByDisplayValue('另一个项目')
     fireEvent.click(screen.getByRole('button', { name: '水印' }))
-    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: '水印文字' })).toHaveValue('仅供办理业务使用')
     expect(screen.getByRole('switch', { name: '启用水印' })).toHaveAttribute(
       'aria-checked',
       'false',

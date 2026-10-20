@@ -27,7 +27,7 @@ import {
   updatePageWithThumbnail,
   updateProjectSettings,
 } from '@/lib/db'
-import { DEFAULT_QUAD } from '@/lib/geometry'
+import { DEFAULT_QUAD, isValidCropQuad } from '@/lib/geometry'
 import { hasCachedEngineAsset } from '@/lib/engine-cache'
 import { isEngineTimeout, isAbortError, scannerClient } from '@/lib/scanner-client'
 import {
@@ -688,6 +688,10 @@ export function ScanPage() {
 
   const confirmCrop = () => {
     if (!active) return
+    if (!isValidCropQuad(active.corners)) {
+      toast.error(messages.invalidCropCorners)
+      return
+    }
     const confirmed = { ...active, cropConfirmed: true, updatedAt: Date.now() }
     updateActive(() => confirmed)
     void updatePageMetadata(confirmed).catch((reason: unknown) => {

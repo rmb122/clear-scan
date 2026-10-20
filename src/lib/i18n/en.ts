@@ -169,6 +169,7 @@ export const en = {
   watermarkProjectHint: 'Applies to the whole project. Changes are saved automatically.',
   enableWatermark: 'Enable watermark',
   watermarkText: 'Watermark text',
+  watermarkDefaultText: 'For application use only',
   watermarkPlaceholder: 'e.g. For application use only',
   watermarkFontSize: 'Font size',
   watermarkOpacity: 'Opacity',
@@ -241,6 +242,8 @@ export const en = {
   redetected: 'Edges detected again',
   redetectionFailed: 'Could not detect edges again',
   cropConfirmSaveFailed: 'Could not save crop confirmation',
+  invalidCropCorners:
+    'Crop edges must not cross, overlap, or fold inward. Adjust the corners or detect edges again.',
   cropStateSaveFailed: 'Could not save crop settings',
   openingProject: 'Opening scan...',
   reload: 'Reload',
