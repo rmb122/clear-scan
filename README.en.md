@@ -21,12 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rmb122/clear-scan">Source code</a> ·
-  <a href="https://github.com/rmb122/clear-scan/issues">Report an issue</a>
-</p>
-
-<p align="center">
-  If you find Clear Scan useful, please give it a <a href="https://github.com/rmb122/clear-scan">Star</a> on GitHub!
+  If you find Clear Scan useful, please give it a Star on GitHub!
 </p>
 
 ## Overview

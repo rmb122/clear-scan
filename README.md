@@ -21,12 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rmb122/clear-scan">源代码</a> ·
-  <a href="https://github.com/rmb122/clear-scan/issues">问题反馈</a>
-</p>
-
-<p align="center">
-  如果觉得清晰扫描好用, 欢迎点击仓库右上角的 <a href="https://github.com/rmb122/clear-scan">Star</a> 支持一下!
+  如果觉得清晰扫描好用, 欢迎点击仓库右上角的 Star 支持一下!
 </p>
 
 ## 项目简介
