@@ -108,6 +108,7 @@ There is no cloud image-processing step. The first visit still downloads the app
 
 ## Privacy and limitations
 
+- The site uses Google Analytics for usage statistics and sends visit data to Google. Scan images and document content are still processed locally.
 - The application code does not intentionally upload scan images. Sensitive documents should still be handled on a trusted device, browser, and deployment origin.
 - Scan history belongs to the current browser profile. Clearing site data, using private browsing, or reaching a storage quota can remove or prevent history from being saved.
 - The PWA cache and scan history are separate. Uninstalling the PWA may not delete IndexedDB; clearing the browser's site data removes both completely.
